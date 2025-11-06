@@ -1,0 +1,2 @@
+/usr/bin/ar qc libuav_core.a CMakeFiles/uav_core.dir/crypto/openssl_crypto.cpp.o CMakeFiles/uav_core.dir/crypto/sodium_crypto.cpp.o CMakeFiles/uav_core.dir/auth/auth_manager.cpp.o CMakeFiles/uav_core.dir/aodv_bridge/ns3_helpers.cpp.o CMakeFiles/uav_core.dir/metrics/metrics_collector.cpp.o
+/usr/bin/ranlib libuav_core.a
