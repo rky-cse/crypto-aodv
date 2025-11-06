@@ -1,0 +1,200 @@
+[INFO] Outputs will be written to: "results/20251106-200153"
+[DEBUG] cwd = /mnt/e/minor-crypto-aodv/crypto-aodv
+[INFO] UAV A IP: 10.1.1.1  UAV B IP: 10.1.1.2  BS IP: 10.1.1.5
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] GenerateEd25519Keypair: sk=64 pk=32
+[ns3bridge] Registered UDP receiver on node 4 port 9000 socket=0x566b52cbd6b0
+[ns3bridge] Registered UDP receiver on node 0 port 9001 socket=0x566b52cbee70
+[ns3bridge] Registered UDP receiver on node 1 port 9001 socket=0x566b52cbf780
+[ns3bridge] Registered UDP receiver on node 0 port 9010 socket=0x566b52cc0120
+[ns3bridge] Registered UDP receiver on node 1 port 9010 socket=0x566b52cc0ac0
+[ns3bridge] Registered UDP receiver on node 1 port 9020 socket=0x566b52cc1480
+[SIMDBG] t=0.5
+[sodium] GenerateEd25519Keypair: sk=64 pk=32
+[sodium] ConvertEd25519PrivToX25519: converted privkey (32 bytes)
+[auth] client: converted ed_priv -> x25519_priv len=32
+[sodium] ConvertEd25519PubToX25519: converted pubkey (32 bytes)
+[auth] client: converted ed_pub -> x25519_pub len=32
+[auth] GenerateAuthRequest: signature len=64
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.5:9000 bytes=160 send_result=160
+[UAV A] sent AuthRequest
+[sodium] GenerateEd25519Keypair: sk=64 pk=32
+[sodium] ConvertEd25519PrivToX25519: converted privkey (32 bytes)
+[auth] client: converted ed_priv -> x25519_priv len=32
+[sodium] ConvertEd25519PubToX25519: converted pubkey (32 bytes)
+[auth] client: converted ed_pub -> x25519_pub len=32
+[auth] GenerateAuthRequest: signature len=64
+[ns3bridge] SendUdpBytes: node=1 srcAddr=10.1.1.2 -> dst=10.1.1.5:9000 bytes=160 send_result=160
+[UAV B] sent AuthRequest
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cbd6b0 node=4
+[ns3bridge] Received packet size=160 bytes from 10.1.1.2 on socket=0x566b52cbd6b0
+[auth][BS] VerifyAndRespondAuthRequest: got req version=1 timestamp=1762459313497 nonce=15584931117506839665 ed_pub.len=32 x_pub.len=32 sig.len=64
+[sodium] ConvertEd25519PrivToX25519: converted privkey (32 bytes)
+[sodium] EcdhSharedSecret: computed shared secret (32 bytes)
+[auth][BS] ECDH succeeded shared.len=32
+[auth][BS] VerifyAndRespondAuthRequest: success, session_key.len=32
+[BS] VerifyAndRespondAuthRequest -> status=0 msg="ok"
+[BS] stored session for 10.1.1.2 (len=32)
+[ns3bridge] SendUdpBytes: node=4 srcAddr=10.1.1.5 -> dst=10.1.1.2:9001 bytes=118 send_result=118
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cbf780 node=1
+[ns3bridge] Received packet size=118 bytes from 10.1.1.5 on socket=0x566b52cbf780
+[sodium] ConvertEd25519PubToX25519: converted pubkey (32 bytes)
+[auth] VerifyAuthAck: converted server ed pub -> x25519 pub len=32
+[sodium] EcdhSharedSecret: computed shared secret (32 bytes)
+[auth] VerifyAuthAck: ECDH shared len=32
+[auth] VerifyAuthAck: derived session key len=32
+[UAV B] authenticated (sess len=32)
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cbd6b0 node=4
+[ns3bridge] Received packet size=160 bytes from 10.1.1.1 on socket=0x566b52cbd6b0
+[auth][BS] VerifyAndRespondAuthRequest: got req version=1 timestamp=1762459313497 nonce=1142439051665159897 ed_pub.len=32 x_pub.len=32 sig.len=64
+[sodium] ConvertEd25519PrivToX25519: converted privkey (32 bytes)
+[sodium] EcdhSharedSecret: computed shared secret (32 bytes)
+[auth][BS] ECDH succeeded shared.len=32
+[auth][BS] VerifyAndRespondAuthRequest: success, session_key.len=32
+[BS] VerifyAndRespondAuthRequest -> status=0 msg="ok"
+[BS] stored session for 10.1.1.1 (len=32)
+[ns3bridge] SendUdpBytes: node=4 srcAddr=10.1.1.5 -> dst=10.1.1.1:9001 bytes=118 send_result=118
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cbee70 node=0
+[ns3bridge] Received packet size=118 bytes from 10.1.1.5 on socket=0x566b52cbee70
+[sodium] ConvertEd25519PubToX25519: converted pubkey (32 bytes)
+[auth] VerifyAuthAck: converted server ed pub -> x25519 pub len=32
+[sodium] EcdhSharedSecret: computed shared secret (32 bytes)
+[auth] VerifyAuthAck: ECDH shared len=32
+[auth] VerifyAuthAck: derived session key len=32
+[UAV A] authenticated (sess len=32)
+[BS] generated group key
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=4 srcAddr=10.1.1.5 -> dst=10.1.1.1:9010 bytes=60 send_result=60
+[BS] sent group->A
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=4 srcAddr=10.1.1.5 -> dst=10.1.1.2:9010 bytes=60 send_result=60
+[BS] sent group->B
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc0120 node=0
+[ns3bridge] Received packet size=60 bytes from 10.1.1.5 on socket=0x566b52cc0120
+[sodium] backend initialized; AES-GCM available=yes
+[UAV A] got group key (len=32)
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc0ac0 node=1
+[ns3bridge] Received packet size=60 bytes from 10.1.1.5 on socket=0x566b52cc0ac0
+[sodium] backend initialized; AES-GCM available=yes
+[UAV B] got group key (len=32)
+[SIMDBG] half time t=10
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[UAV B] received message #5 (app bytes=17)
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=53 send_result=53
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=53 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[UAV B] received message #10 (app bytes=18)
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[UAV B] received message #15 (app bytes=18)
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.2:9020 bytes=54 send_result=54
+[ns3bridge] SocketRecvCallback triggered on socket=0x566b52cc1480 node=1
+[ns3bridge] Received packet size=54 bytes from 10.1.1.1 on socket=0x566b52cc1480
+[sodium] backend initialized; AES-GCM available=yes
+[UAV B] received message #20 (app bytes=18)
+[SIMDBG] Simulator::Run returned at t=20
+[DEBUG] WriteSummaryCsv: cwd = /mnt/e/minor-crypto-aodv/crypto-aodv
+[DEBUG] WriteSummaryCsv: absolute = '/mnt/e/minor-crypto-aodv/crypto-aodv/results/20251106-200153/metrics_summary.csv'
+[DEBUG] WriteSummaryCsv: opened 'results/20251106-200153/metrics_summary.csv'
+[DEBUG] WriteSummaryCsv: wrote & closed 'results/20251106-200153/metrics_summary.csv'
+[DEBUG] WriteNodeDetailsCsv: cwd = /mnt/e/minor-crypto-aodv/crypto-aodv
+[DEBUG] WriteNodeDetailsCsv: absolute = '/mnt/e/minor-crypto-aodv/crypto-aodv/results/20251106-200153/metrics_node_details.csv'
+[DEBUG] WriteNodeDetailsCsv: opened 'results/20251106-200153/metrics_node_details.csv'
+[DEBUG] WriteNodeDetailsCsv: wrote & closed 'results/20251106-200153/metrics_node_details.csv'
+[INFO] WriteSummaryCsv -> OK, WriteNodeDetailsCsv -> OK
+[INFO] Wrote summary text to "results/20251106-200153/summary.txt"
+[INFO] Reached Here
+[INFO] Simulation finished. Outputs in: "results/20251106-200153"

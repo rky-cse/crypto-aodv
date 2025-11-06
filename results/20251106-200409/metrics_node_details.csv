@@ -1,0 +1,4 @@
+Node,OpName,Count,Total_us,Total_ms
+99,"AUTH_VERIFY",1,1484,1.484
+1,"AUTH_GEN",1,218,0.218
+0,"AUTH_GEN",1,893,0.893

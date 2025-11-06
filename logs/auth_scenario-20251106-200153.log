@@ -1,0 +1,78 @@
+[DEBUG] cwd = /mnt/e/minor-crypto-aodv/crypto-aodv
+Outputs will be written to: "results/20251106-200153"
+Foreign UAV IP: 10.1.1.1
+BS IP: 10.1.1.5
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] backend initialized; AES-GCM available=yes
+[sodium] GenerateEd25519Keypair: sk=64 pk=32
+[ns3bridge] Registered UDP receiver on node 4 port 9000 socket=0x5ad818241bc0
+[ns3bridge] Registered UDP receiver on node 0 port 9001 socket=0x5ad818245c10
+[sodium] GenerateEd25519Keypair: sk=64 pk=32
+[sodium] ConvertEd25519PrivToX25519: converted privkey (32 bytes)
+[auth] client: converted ed_priv -> x25519_priv len=32
+[sodium] ConvertEd25519PubToX25519: converted pubkey (32 bytes)
+[auth] client: converted ed_pub -> x25519_pub len=32
+[auth] GenerateAuthRequest: signature len=64
+[ns3bridge] SendUdpBytes: node=0 srcAddr=10.1.1.1 -> dst=10.1.1.5:9000 bytes=160 send_result=160
+AuthRequest sent from node 0 to BS
+[ns3bridge] SocketRecvCallback triggered on socket=0x5ad818241bc0 node=4
+[ns3bridge] Received packet size=160 bytes from 10.1.1.1 on socket=0x5ad818241bc0
+[auth][BS] VerifyAndRespondAuthRequest: got req version=1 timestamp=1762459313392 nonce=7339720649604742026 ed_pub.len=32 x_pub.len=32 sig.len=64
+[sodium] ConvertEd25519PrivToX25519: converted privkey (32 bytes)
+[sodium] EcdhSharedSecret: computed shared secret (32 bytes)
+[auth][BS] ECDH succeeded shared.len=32
+[auth][BS] VerifyAndRespondAuthRequest: success, session_key.len=32
+[ns3bridge] SendUdpBytes: node=4 srcAddr=10.1.1.5 -> dst=10.1.1.1:9001 bytes=118 send_result=118
+BS: AuthAck sent to 10.1.1.1
+[ns3bridge] SocketRecvCallback triggered on socket=0x5ad818245c10 node=0
+[ns3bridge] Received packet size=118 bytes from 10.1.1.5 on socket=0x5ad818245c10
+[sodium] ConvertEd25519PubToX25519: converted pubkey (32 bytes)
+[auth] VerifyAuthAck: converted server ed pub -> x25519 pub len=32
+[sodium] EcdhSharedSecret: computed shared secret (32 bytes)
+[auth] VerifyAuthAck: ECDH shared len=32
+[auth] VerifyAuthAck: derived session key len=32
+UAV: Authenticated with BS successfully. Session key length = 32 bytes
+[SIMDBG] Simulator::Run returned at t=10
+
+=== Metrics Summary ===
+Simulation time: 10 s
+Node    PktsSent    PktsRecv      BytesSent     BytesRecv     AvgDelay(s) Crypto(ms)    InitE(J)      FinalE(J)     
+4       1           1             118           160           0.0000      0.1710        0.0000        0.0000        
+3       0           0             0             0             0.0000      0.0000        0.0000        0.0000        
+2       0           0             0             0             0.0000      0.0000        0.0000        0.0000        
+1       0           0             0             0             0.0000      0.0000        0.0000        0.0000        
+0       1           1             160           118           0.0000      0.2950        0.0000        0.0000        
+
+--- Global ---
+Total packets sent: 2
+Total packets recv: 2
+Packet Delivery Ratio (PDR): 1.0000
+Throughput (recv, bits/s): 222.40
+Avg end-to-end delay (s): 0.00
+Total crypto CPU time (ms): 0.47
+Total initial energy (J): 0.00
+Total final energy (J): 0.00
+Total energy consumed (J): 0.00
+
+--- Crypto Ops (per-node) ---
+Node 4:
+  AUTH_REQ_VERIFY_AND_ACK -> count=1 total_ms=0.17
+Node 0:
+  AUTH_ACK_VERIFY -> count=1 total_ms=0.16
+  AUTH_REQ_GEN -> count=1 total_ms=0.13
+======================
+
+[DEBUG] summary csv absolute = /mnt/e/minor-crypto-aodv/crypto-aodv/results/20251106-200153/metrics_summary.csv
+[DEBUG] WriteSummaryCsv: cwd = /mnt/e/minor-crypto-aodv/crypto-aodv
+[DEBUG] WriteSummaryCsv: absolute = '/mnt/e/minor-crypto-aodv/crypto-aodv/results/20251106-200153/metrics_summary.csv'
+[DEBUG] WriteSummaryCsv: opened 'results/20251106-200153/metrics_summary.csv'
+[DEBUG] WriteSummaryCsv: wrote & closed 'results/20251106-200153/metrics_summary.csv'
+[DEBUG] WriteNodeDetailsCsv: cwd = /mnt/e/minor-crypto-aodv/crypto-aodv
+[DEBUG] WriteNodeDetailsCsv: absolute = '/mnt/e/minor-crypto-aodv/crypto-aodv/results/20251106-200153/metrics_details.csv'
+[DEBUG] WriteNodeDetailsCsv: opened 'results/20251106-200153/metrics_details.csv'
+[DEBUG] WriteNodeDetailsCsv: wrote & closed 'results/20251106-200153/metrics_details.csv'
+Wrote CSV summary to "results/20251106-200153/metrics_summary.csv"
+Wrote CSV details to "results/20251106-200153/metrics_details.csv"
+Wrote summary text to: "results/20251106-200153/summary.txt"
+Simulation finished. Outputs in: "results/20251106-200153"

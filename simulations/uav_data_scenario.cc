@@ -1,15 +1,11 @@
 // simulations/uav_data_scenario.cc
 //
-// UAV data scenario:
-//  - Nodes: 0 = UAV A (sender), 1 = UAV B (receiver), ... , N-1 = BS
-//  - Both UAV A and UAV B authenticate to BS (AuthRequest/AuthAck).
-//  - BS creates a random group key and sends it encrypted to each UAV using the
-//    session key derived during the auth handshake (HKDF -> AEAD key).
-//  - UAV A sends multiple encrypted data messages to UAV B using the group key.
-//  - MetricsCollector records send/receive counts, delays, crypto CPU times.
+// Simplified UAV data scenario with a small watchdog to avoid permanent hang
+// after Simulator::Run(). Writes CSV summary + text summary into a timestamped
+// results directory.
 //
-// This file includes implementation .cpp files for quick testing; in production
-// you may want to link object files and include headers instead.
+// This file purposely includes implementation units for quick testing (same
+// as your previous layout). In production prefer headers + linking.
 
 #include <ns3/core-module.h>
 #include <ns3/network-module.h>
@@ -19,16 +15,24 @@
 #include <memory>
 #include <chrono>
 #include <map>
-#include <sstream>               // for converting Ipv4Address to string
+#include <sstream>
+#include <filesystem>
+#include <ctime>
+#include <iomanip>
+#include <fstream>
+#include <cstring>
+#include <thread>
+#include <atomic>
+#include <unistd.h> // getcwd
 
-#include "aodv_bridge/ns3_helpers.cpp"         // Ns3Helper
-#include "auth/auth_manager.cpp"               // AuthManager
-#include "crypto/sodium_crypto.cpp"            // CreateCryptoBackend()
-#include "crypto/hkdf.h"                       // hkdf_sha256
-#include "metrics/metrics_collector.cpp"       // MetricsCollector
+// local components (as in your tree)
+#include "aodv_bridge/ns3_helpers.cpp"
+#include "auth/auth_manager.cpp"
+#include "crypto/sodium_crypto.cpp"
+#include "crypto/hkdf.h"
+#include "metrics/metrics_collector.cpp"
 
 using namespace ns3;
-using namespace std::chrono;
 using namespace ns3bridge;
 using namespace uavauth;
 using namespace uavcrypto;
@@ -36,24 +40,60 @@ using namespace metrics;
 
 static const uint16_t AUTH_REQ_PORT = 9000;
 static const uint16_t AUTH_ACK_PORT = 9001;
-static const uint16_t GROUP_PORT = 9010;
-static const uint16_t DATA_PORT = 9020;
+static const uint16_t GROUP_PORT    = 9010;
+static const uint16_t DATA_PORT     = 9020;
 
 int main(int argc, char** argv) {
     CommandLine cmd;
-    uint32_t nodeCount = 5; // nodes: 0 (UAV A), 1 (UAV B), 2..N-2 (relays), N-1 (BS)
+    uint32_t nodeCount = 5;
     double simDuration = 20.0;
     uint32_t dataMessages = 20;
-    double dataInterval = 0.2; // seconds between messages
-    cmd.AddValue("nodes", "Number of nodes (>=3)", nodeCount);
-    cmd.AddValue("time", "Simulation duration (s)", simDuration);
+    double dataInterval = 0.2;
+    std::string outBase = "results";
+    double grace = 5.0; // watchdog grace (seconds) beyond simDuration
+
+    cmd.AddValue("nodes",    "Number of nodes (>=3)", nodeCount);
+    cmd.AddValue("time",     "Simulation duration (s)", simDuration);
     cmd.AddValue("messages", "Number of data messages to send", dataMessages);
     cmd.AddValue("interval", "Inter-message interval (s)", dataInterval);
+    cmd.AddValue("outdir",   "Base output directory (default: results)", outBase);
+    cmd.AddValue("grace",    "Watchdog grace period (s) added to simDuration before forced shutdown", grace);
     cmd.Parse(argc, argv);
 
     if (nodeCount < 3) nodeCount = 3;
 
-    // Build network
+    // prepare timestamped output directory
+    std::filesystem::path basePath(outBase);
+    std::time_t tnow = std::time(nullptr);
+    std::tm tmnow;
+#if defined(_WIN32)
+    gmtime_s(&tmnow, &tnow);
+#else
+    gmtime_r(&tnow, &tmnow);
+#endif
+    std::ostringstream ts;
+    ts << std::put_time(&tmnow, "%Y%m%d-%H%M%S");
+    std::filesystem::path outDir = basePath / ts.str();
+
+    try {
+        std::filesystem::create_directories(outDir);
+    } catch (const std::exception &e) {
+        std::cerr << "[ERR] Failed to create output directory '" << outDir.string() << "': " << e.what() << "\n";
+        return 1;
+    }
+
+    std::cerr << "[INFO] Outputs will be written to: " << outDir << "\n";
+
+    // print working dir to help debugging
+    {
+        char *cwd = getcwd(nullptr, 0);
+        if (cwd) {
+            std::cerr << "[DEBUG] cwd = " << cwd << "\n";
+            free(cwd);
+        }
+    }
+
+    // Build simple network + routing
     Ns3Helper helper;
     helper.BuildWifiNodes(nodeCount);
     helper.InstallAodvRouting();
@@ -61,21 +101,21 @@ int main(int argc, char** argv) {
 
     uint32_t uavA_idx = 0;
     uint32_t uavB_idx = 1;
-    uint32_t bs_idx = nodeCount - 1;
+    uint32_t bs_idx   = nodeCount - 1;
 
     Ipv4Address uavA_ip = helper.GetNodeIpv4(uavA_idx);
     Ipv4Address uavB_ip = helper.GetNodeIpv4(uavB_idx);
     Ipv4Address bs_ip   = helper.GetNodeIpv4(bs_idx);
 
-    std::cout << "UAV A IP: " << uavA_ip << ", UAV B IP: " << uavB_ip << ", BS IP: " << bs_ip << "\n";
+    std::cerr << "[INFO] UAV A IP: " << uavA_ip << "  UAV B IP: " << uavB_ip << "  BS IP: " << bs_ip << "\n";
 
-    // Metrics
+    // Metrics collector
     auto collector = std::make_shared<MetricsCollector>();
     for (uint32_t i = 0; i < nodeCount; ++i) {
         collector->RegisterNode(i, helper.GetNode(i));
     }
 
-    // Create crypto backends & auth managers
+    // crypto / auth managers
     auto crypto_uavA = CreateCryptoBackend();
     auto crypto_uavB = CreateCryptoBackend();
     auto crypto_bs   = CreateCryptoBackend();
@@ -84,330 +124,303 @@ int main(int argc, char** argv) {
     auto auth_uavB = CreateAuthManager(std::move(crypto_uavB));
     auto auth_bs   = CreateAuthManager(std::move(crypto_bs));
 
-    // Pre-generate BS Ed25519 keypair
+    // BS keypair
     auto tempCrypto = CreateCryptoBackend();
     auto bs_keys = tempCrypto->GenerateEd25519Keypair();
     if (!bs_keys.ok) {
-        std::cerr << "BS keygen failed: " << bs_keys.err << "\n";
+        std::cerr << "[ERR] BS key generation failed: " << bs_keys.err << "\n";
         return 1;
     }
     std::vector<uint8_t> bs_sk(bs_keys.data.begin(), bs_keys.data.begin() + 64);
     std::vector<uint8_t> bs_pk(bs_keys.data.begin() + 64, bs_keys.data.end());
 
-    // State trackers
-    bool uavA_authed = false;
-    bool uavB_authed = false;
-    std::map<std::string, std::vector<uint8_t>> bs_session_map; // ip->session_key (as bytes)
-    std::vector<uint8_t> uavA_session_key, uavB_session_key;
-    std::vector<uint8_t> group_key; // 32 bytes
+    // state
+    std::map<std::string, std::vector<uint8_t>> bs_sessions;
+    std::vector<uint8_t> uavA_session, uavB_session, group_key;
 
-    // Helper: convert Ipv4Address to key string via stream operator
     auto ipKey = [](const Ipv4Address& ip) {
-        std::ostringstream oss;
-        oss << ip;
-        return oss.str();
+        std::ostringstream o; o << ip; return o.str();
     };
 
-    // --- BS receiver: handle AuthRequest from UAVs, verify and respond ---
+    // ---- BS receiver: handle AuthRequest
     helper.RegisterUdpReceiver(bs_idx, AUTH_REQ_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
         auto maybe = uavauth::AuthRequest::deserialize(payload);
         if (!maybe) {
-            std::cerr << "BS: failed to parse AuthRequest\n";
+            std::cerr << "[BS] failed to parse AuthRequest\n";
             return;
         }
         AuthRequest req = *maybe;
-
-        // record reception (use req.timestamp which is ms since epoch)
         double sendTime = static_cast<double>(req.timestamp) / 1000.0;
         collector->OnPacketReceived(bs_idx, payload.size(), sendTime);
 
-        // Verify and respond. Measure crypto time
-        auto t0 = high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
         AuthAck ack = auth_bs->VerifyAndRespondAuthRequest(req, bs_sk, bs_pk);
-        auto t1 = high_resolution_clock::now();
-        auto dur = duration_cast<microseconds>(t1 - t0).count();
-        collector->AddCryptoTimeUs(bs_idx, static_cast<uint64_t>(dur));
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(bs_idx, dur);
+        collector->AddCryptoOp(bs_idx, "AUTH_VERIFY", dur);
 
-        // DEBUG: print ack status/message and derived session key info
-        std::cout << "BS: VerifyAndRespondAuthRequest -> status=" << ack.status
-                  << " msg=\"" << ack.msg << "\"" << std::endl;
+        std::cerr << "[BS] VerifyAndRespondAuthRequest -> status=" << ack.status << " msg=\"" << ack.msg << "\"\n";
 
-        // After verification succeeded, auth_bs may have internal session material.
-        // Capture that session key for this UAV under its IP string so BS can later encrypt group key.
         if (ack.status == 0) {
             std::vector<uint8_t> sess = auth_bs->GetSessionKey();
-            std::cout << "BS: derived session key len=" << sess.size() << " bytes\n";
             if (!sess.empty()) {
-                std::cout << "BS: session key prefix (hex): ";
-                for (size_t i = 0; i < std::min<size_t>(sess.size(), 16); ++i) printf("%02x", sess[i]);
-                std::cout << std::endl;
-                bs_session_map[ipKey(from)] = sess;
-                std::cout << "BS: stored session key for " << from << " (len=" << sess.size() << ")\n";
-            } else {
-                std::cerr << "BS: WARNING - session key empty after successful ack\n";
+                bs_sessions[ipKey(from)] = sess;
+                std::cerr << "[BS] stored session for " << from << " (len=" << sess.size() << ")\n";
             }
-        } else {
-            std::cerr << "BS: auth failed for " << from << " (" << ack.msg << ")\n";
         }
 
-        // send ack back to sender
         auto wire = ack.serialize();
         collector->OnPacketSent(bs_idx, wire.size());
         helper.SendUdpBytes(bs_idx, from, AUTH_ACK_PORT, wire);
-        std::cout << "BS: AuthAck sent to " << from << "\n";
     });
 
-    // --- UAV A receiver: listens for AuthAck and GroupKey and Data ---
-    helper.RegisterUdpReceiver(uavA_idx, AUTH_ACK_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
+    // ---- UAV A/B receivers for AuthAck
+    helper.RegisterUdpReceiver(uavA_idx, AUTH_ACK_PORT, [&](Ipv4Address, std::vector<uint8_t> payload) {
         auto maybe = uavauth::AuthAck::deserialize(payload);
-        if (!maybe) {
-            std::cerr << "UAV A: failed to parse AuthAck\n";
-            return;
-        }
+        if (!maybe) { std::cerr << "[UAV A] failed to parse AuthAck\n"; return; }
         AuthAck ack = *maybe;
-
-        // record reception; no sendTime available for ack (use current sim time)
         collector->OnPacketReceived(uavA_idx, payload.size(), 0.0);
-
-        // Verify and derive session key
-        auto t0 = high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
         bool ok = auth_uavA->VerifyAuthAck(ack, bs_pk);
-        auto t1 = high_resolution_clock::now();
-        collector->AddCryptoTimeUs(uavA_idx, static_cast<uint64_t>(duration_cast<microseconds>(t1 - t0).count()));
-
-        if (ok) {
-            uavA_authed = true;
-            uavA_session_key = auth_uavA->GetSessionKey();
-            std::cout << "UAV A: Authenticated to BS, session key len=" << uavA_session_key.size() << "\n";
-        } else {
-            std::cerr << "UAV A: AuthAck verification failed\n";
-        }
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(uavA_idx, dur);
+        collector->AddCryptoOp(uavA_idx, "AUTH_ACK_VERIFY", dur);
+        if (ok) { uavA_session = auth_uavA->GetSessionKey(); std::cerr << "[UAV A] authenticated (sess len=" << uavA_session.size() << ")\n"; }
     });
 
-    helper.RegisterUdpReceiver(uavB_idx, AUTH_ACK_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
+    helper.RegisterUdpReceiver(uavB_idx, AUTH_ACK_PORT, [&](Ipv4Address, std::vector<uint8_t> payload) {
         auto maybe = uavauth::AuthAck::deserialize(payload);
-        if (!maybe) {
-            std::cerr << "UAV B: failed to parse AuthAck\n";
-            return;
-        }
+        if (!maybe) { std::cerr << "[UAV B] failed to parse AuthAck\n"; return; }
         AuthAck ack = *maybe;
         collector->OnPacketReceived(uavB_idx, payload.size(), 0.0);
-
-        auto t0 = high_resolution_clock::now();
+        auto t0 = std::chrono::high_resolution_clock::now();
         bool ok = auth_uavB->VerifyAuthAck(ack, bs_pk);
-        auto t1 = high_resolution_clock::now();
-        collector->AddCryptoTimeUs(uavB_idx, static_cast<uint64_t>(duration_cast<microseconds>(t1 - t0).count()));
-
-        if (ok) {
-            uavB_authed = true;
-            uavB_session_key = auth_uavB->GetSessionKey();
-            std::cout << "UAV B: Authenticated to BS, session key len=" << uavB_session_key.size() << "\n";
-        } else {
-            std::cerr << "UAV B: AuthAck verification failed\n";
-        }
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(uavB_idx, dur);
+        collector->AddCryptoOp(uavB_idx, "AUTH_ACK_VERIFY", dur);
+        if (ok) { uavB_session = auth_uavB->GetSessionKey(); std::cerr << "[UAV B] authenticated (sess len=" << uavB_session.size() << ")\n"; }
     });
 
-    // Group key receiver: BS will send an AEAD-encrypted group key to each UAV on GROUP_PORT.
-    // UAV A: derive AEAD key via HKDF from session material, then decrypt.
-    helper.RegisterUdpReceiver(uavA_idx, GROUP_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
-        if (uavA_session_key.empty()) {
-            std::cerr << "UAV A: no session key available to decrypt group key\n";
-            return;
-        }
-        // derive AEAD key (32 bytes) using HKDF-SHA256 with an info label
-        std::vector<uint8_t> aeadKeyA = uavcrypto::hkdf_sha256(std::vector<uint8_t>{}, uavA_session_key, std::vector<uint8_t>{'g','r','o','u','p','A'}, 32);
-        if (aeadKeyA.size() != 32) {
-            std::cerr << "UAV A: hkdf failed to produce 32-byte key\n";
-            return;
-        }
-
+    // ---- Group key receivers
+    helper.RegisterUdpReceiver(uavA_idx, GROUP_PORT, [&](Ipv4Address, std::vector<uint8_t> payload) {
+        if (uavA_session.empty()) { std::cerr << "[UAV A] no session to decrypt group\n"; return; }
+        std::vector<uint8_t> aead = uavcrypto::hkdf_sha256({}, uavA_session, std::vector<uint8_t>{'g','r','o','u','p','A'}, 32);
         auto crypto = CreateCryptoBackend();
-        auto dec = crypto->AeadDecrypt(aeadKeyA, {}, payload);
-        if (!dec.ok) {
-            std::cerr << "UAV A: failed to decrypt group key: " << dec.err << "\n";
-            return;
-        }
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto dec = crypto->AeadDecrypt(aead, {}, payload);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(uavA_idx, dur);
+        collector->AddCryptoOp(uavA_idx, "AEAD_DECRYPT_GROUP", dur);
+        if (!dec.ok) { std::cerr << "[UAV A] group decrypt failed: " << dec.err << "\n"; return; }
         group_key = dec.data;
-        std::cout << "UAV A: received group key (len=" << group_key.size() << ")\n";
         collector->OnPacketReceived(uavA_idx, payload.size(), 0.0);
+        std::cerr << "[UAV A] got group key (len=" << group_key.size() << ")\n";
     });
 
-    // UAV B group key receiver (derives its own AEAD key)
-    helper.RegisterUdpReceiver(uavB_idx, GROUP_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
-        if (uavB_session_key.empty()) {
-            std::cerr << "UAV B: no session key available to decrypt group key\n";
-            return;
-        }
-        std::vector<uint8_t> aeadKeyB = uavcrypto::hkdf_sha256(std::vector<uint8_t>{}, uavB_session_key, std::vector<uint8_t>{'g','r','o','u','p','B'}, 32);
-        if (aeadKeyB.size() != 32) {
-            std::cerr << "UAV B: hkdf failed to produce 32-byte key\n";
-            return;
-        }
+    helper.RegisterUdpReceiver(uavB_idx, GROUP_PORT, [&](Ipv4Address, std::vector<uint8_t> payload) {
+        if (uavB_session.empty()) { std::cerr << "[UAV B] no session to decrypt group\n"; return; }
+        std::vector<uint8_t> aead = uavcrypto::hkdf_sha256({}, uavB_session, std::vector<uint8_t>{'g','r','o','u','p','B'}, 32);
         auto crypto = CreateCryptoBackend();
-        auto dec = crypto->AeadDecrypt(aeadKeyB, {}, payload);
-        if (!dec.ok) {
-            std::cerr << "UAV B: failed to decrypt group key: " << dec.err << "\n";
-            return;
-        }
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto dec = crypto->AeadDecrypt(aead, {}, payload);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(uavB_idx, dur);
+        collector->AddCryptoOp(uavB_idx, "AEAD_DECRYPT_GROUP", dur);
+        if (!dec.ok) { std::cerr << "[UAV B] group decrypt failed: " << dec.err << "\n"; return; }
         group_key = dec.data;
-        std::cout << "UAV B: received group key (len=" << group_key.size() << ")\n";
         collector->OnPacketReceived(uavB_idx, payload.size(), 0.0);
+        std::cerr << "[UAV B] got group key (len=" << group_key.size() << ")\n";
     });
 
-    // Data receiver on UAV B: decrypts messages using group_key and records metrics
-    helper.RegisterUdpReceiver(uavB_idx, DATA_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
-        if (group_key.empty()) {
-            std::cerr << "UAV B: no group key yet for decrypting data\n";
-            return;
-        }
+    // ---- Data receiver (UAV B)
+    helper.RegisterUdpReceiver(uavB_idx, DATA_PORT, [&](Ipv4Address, std::vector<uint8_t> payload) {
+        if (group_key.empty()) { std::cerr << "[UAV B] no group key yet\n"; return; }
         auto crypto = CreateCryptoBackend();
-
+        auto t0 = std::chrono::high_resolution_clock::now();
         auto dec = crypto->AeadDecrypt(group_key, {}, payload);
-        if (!dec.ok) {
-            std::cerr << "UAV B: data decrypt failed: " << dec.err << "\n";
-            return;
-        }
-        if (dec.data.size() < sizeof(double)) {
-            std::cerr << "UAV B: decrypted data too small\n";
-            return;
-        }
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(uavB_idx, dur);
+        collector->AddCryptoOp(uavB_idx, "AEAD_DECRYPT_DATA", dur);
+        if (!dec.ok) { std::cerr << "[UAV B] data decrypt failed: " << dec.err << "\n"; return; }
+        if (dec.data.size() < sizeof(double)) { std::cerr << "[UAV B] decrypted payload too small\n"; return; }
         double send_time_s = 0.0;
         std::memcpy(&send_time_s, dec.data.data(), sizeof(double));
-        size_t app_size = dec.data.size() - sizeof(double);
-
+        size_t app_sz = dec.data.size() - sizeof(double);
         collector->OnPacketReceived(uavB_idx, payload.size(), send_time_s);
-
         static uint32_t recv_count = 0;
         recv_count++;
-        if ((recv_count % 5) == 0) {
-            std::cout << "UAV B: received message #" << recv_count << " (app bytes=" << app_size << ")\n";
-        }
+        if ((recv_count % 5) == 0) std::cerr << "[UAV B] received message #" << recv_count << " (app bytes=" << app_sz << ")\n";
     });
 
-    // Schedule: at t=1s both UAVs send AuthRequest to BS
+    // ---- Schedule auth requests at t=2.0
     Simulator::Schedule(Seconds(2.0), [&]() {
-        auto t0 = high_resolution_clock::now();
-        AuthRequest reqA = auth_uavA->GenerateAuthRequest();
-        auto t1 = high_resolution_clock::now();
-        collector->AddCryptoTimeUs(uavA_idx, static_cast<uint64_t>(duration_cast<microseconds>(t1 - t0).count()));
-
-        auto wireA = reqA.serialize();
+        auto t0 = std::chrono::high_resolution_clock::now();
+        AuthRequest rA = auth_uavA->GenerateAuthRequest();
+        auto t1 = std::chrono::high_resolution_clock::now();
+        uint64_t durA = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        collector->AddCryptoTimeUs(uavA_idx, durA);
+        collector->AddCryptoOp(uavA_idx, "AUTH_GEN", durA);
+        auto wireA = rA.serialize();
         collector->OnPacketSent(uavA_idx, wireA.size());
         helper.SendUdpBytes(uavA_idx, bs_ip, AUTH_REQ_PORT, wireA);
-        std::cout << "UAV A: sent AuthRequest to BS\n";
+        std::cerr << "[UAV A] sent AuthRequest\n";
 
-        auto t2 = high_resolution_clock::now();
-        AuthRequest reqB = auth_uavB->GenerateAuthRequest();
-        auto t3 = high_resolution_clock::now();
-        collector->AddCryptoTimeUs(uavB_idx, static_cast<uint64_t>(duration_cast<microseconds>(t3 - t2).count()));
-
-        auto wireB = reqB.serialize();
+        auto t2 = std::chrono::high_resolution_clock::now();
+        AuthRequest rB = auth_uavB->GenerateAuthRequest();
+        auto t3 = std::chrono::high_resolution_clock::now();
+        uint64_t durB = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+        collector->AddCryptoTimeUs(uavB_idx, durB);
+        collector->AddCryptoOp(uavB_idx, "AUTH_GEN", durB);
+        auto wireB = rB.serialize();
         collector->OnPacketSent(uavB_idx, wireB.size());
         helper.SendUdpBytes(uavB_idx, bs_ip, AUTH_REQ_PORT, wireB);
-        std::cout << "UAV B: sent AuthRequest to BS\n";
+        std::cerr << "[UAV B] sent AuthRequest\n";
     });
 
-    // After a short delay (allow BS to process both auths), BS generates group key and distributes.
+    // ---- BS generate + distribute group key (t=6.0)
     Simulator::Schedule(Seconds(6.0), [&]() {
-        std::string keyA = ipKey(uavA_ip);
-        std::string keyB = ipKey(uavB_ip);
-        if (bs_session_map.find(keyA) == bs_session_map.end() ||
-            bs_session_map.find(keyB) == bs_session_map.end()) {
-            std::cerr << "BS: session keys missing for one or both UAVs; skipping group distribution\n";
+        auto kA = ipKey(uavA_ip);
+        auto kB = ipKey(uavB_ip);
+        if (bs_sessions.find(kA) == bs_sessions.end() || bs_sessions.find(kB) == bs_sessions.end()) {
+            std::cerr << "[BS] missing session(s) — skipping group distribution\n";
             return;
         }
-
         std::vector<uint8_t> gk(32);
         randombytes_buf(gk.data(), gk.size());
-        std::cout << "BS: generated group key (len=" << gk.size() << ")\n";
+        std::cerr << "[BS] generated group key\n";
 
-        // Encrypt group key for UAV A using HKDF-derived AEAD key
+        // encrypt for A
         {
             auto crypto_local = CreateCryptoBackend();
-            auto sessA = bs_session_map[keyA];
-            std::vector<uint8_t> aeadKeyA = uavcrypto::hkdf_sha256(std::vector<uint8_t>{}, sessA, std::vector<uint8_t>{'g','r','o','u','p','A'}, 32);
-            if (aeadKeyA.size() != 32) {
-                std::cerr << "BS: hkdf failed to produce 32-byte key for UAV A\n";
-            } else {
-                auto ctA = crypto_local->AeadEncrypt(aeadKeyA, {}, gk);
-                if (!ctA.ok) {
-                    std::cerr << "BS: failed to encrypt group key for UAV A: " << ctA.err << "\n";
-                } else {
-                    collector->OnPacketSent(bs_idx, ctA.data.size());
-                    helper.SendUdpBytes(bs_idx, uavA_ip, GROUP_PORT, ctA.data);
-                    std::cout << "BS: sent encrypted group key to UAV A\n";
-                }
-            }
+            auto aeadKey = uavcrypto::hkdf_sha256({}, bs_sessions[kA], std::vector<uint8_t>{'g','r','o','u','p','A'}, 32);
+            auto t0 = std::chrono::high_resolution_clock::now();
+            auto ct = crypto_local->AeadEncrypt(aeadKey, {}, gk);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            collector->AddCryptoTimeUs(bs_idx, dur);
+            collector->AddCryptoOp(bs_idx, "AEAD_ENCRYPT_GROUP_A", dur);
+            if (!ct.ok) { std::cerr << "[BS] encrypt->A failed: " << ct.err << "\n"; }
+            else { collector->OnPacketSent(bs_idx, ct.data.size()); helper.SendUdpBytes(bs_idx, uavA_ip, GROUP_PORT, ct.data); std::cerr << "[BS] sent group->A\n"; }
         }
 
-        // Encrypt group key for UAV B using HKDF-derived AEAD key
+        // encrypt for B
         {
             auto crypto_local = CreateCryptoBackend();
-            auto sessB = bs_session_map[keyB];
-            std::vector<uint8_t> aeadKeyB = uavcrypto::hkdf_sha256(std::vector<uint8_t>{}, sessB, std::vector<uint8_t>{'g','r','o','u','p','B'}, 32);
-            if (aeadKeyB.size() != 32) {
-                std::cerr << "BS: hkdf failed to produce 32-byte key for UAV B\n";
-            } else {
-                auto ctB = crypto_local->AeadEncrypt(aeadKeyB, {}, gk);
-                if (!ctB.ok) {
-                    std::cerr << "BS: failed to encrypt group key for UAV B: " << ctB.err << "\n";
-                } else {
-                    collector->OnPacketSent(bs_idx, ctB.data.size());
-                    helper.SendUdpBytes(bs_idx, uavB_ip, GROUP_PORT, ctB.data);
-                    std::cout << "BS: sent encrypted group key to UAV B\n";
-                }
-            }
+            auto aeadKey = uavcrypto::hkdf_sha256({}, bs_sessions[kB], std::vector<uint8_t>{'g','r','o','u','p','B'}, 32);
+            auto t0 = std::chrono::high_resolution_clock::now();
+            auto ct = crypto_local->AeadEncrypt(aeadKey, {}, gk);
+            auto t1 = std::chrono::high_resolution_clock::now();
+            uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+            collector->AddCryptoTimeUs(bs_idx, dur);
+            collector->AddCryptoOp(bs_idx, "AEAD_ENCRYPT_GROUP_B", dur);
+            if (!ct.ok) { std::cerr << "[BS] encrypt->B failed: " << ct.err << "\n"; }
+            else { collector->OnPacketSent(bs_idx, ct.data.size()); helper.SendUdpBytes(bs_idx, uavB_ip, GROUP_PORT, ct.data); std::cerr << "[BS] sent group->B\n"; }
         }
     });
 
-    // After another short delay to allow group key reception, schedule data messages from UAV A to UAV B using group_key.
+    // ---- Schedule data sends from A to B (starting t=8.0)
     Simulator::Schedule(Seconds(8.0), [&]() {
-        if (group_key.empty()) {
-            std::cerr << "UAV A: no group key locally yet; scheduling still proceeds but messages will likely be dropped\n";
-        }
-
         for (uint32_t i = 0; i < dataMessages; ++i) {
-            double t = 4.0 + i * dataInterval;
+            double t = 8.0 + i * dataInterval;
             Simulator::Schedule(Seconds(t), [&, i]() {
-                double send_time_s = Simulator::Now().GetSeconds();
-                std::string payload_text = "secure message #" + std::to_string(i+1);
-                std::vector<uint8_t> plain(sizeof(double) + payload_text.size());
-                std::memcpy(plain.data(), &send_time_s, sizeof(double));
-                std::memcpy(plain.data() + sizeof(double), payload_text.data(), payload_text.size());
+                double send_time = Simulator::Now().GetSeconds();
+                std::string msg = "secure message #" + std::to_string(i + 1);
+                std::vector<uint8_t> plain(sizeof(double) + msg.size());
+                std::memcpy(plain.data(), &send_time, sizeof(double));
+                std::memcpy(plain.data() + sizeof(double), msg.data(), msg.size());
 
-                // If group_key is not present or too small, log and skip to avoid "symmetric key too small"
-                if (group_key.size() < 16) {
-                    std::cerr << "UAV A: group_key not available or too small; cannot encrypt message\n";
-                    return;
-                }
-
+                if (group_key.size() < 16) { std::cerr << "[UAV A] no group key yet — skipping data encrypt\n"; return; }
                 auto crypto_local = CreateCryptoBackend();
+                auto t0 = std::chrono::high_resolution_clock::now();
                 auto ct = crypto_local->AeadEncrypt(group_key, {}, plain);
-                if (!ct.ok) {
-                    std::cerr << "UAV A: data encrypt failed: " << ct.err << "\n";
-                    return;
-                }
+                auto t1 = std::chrono::high_resolution_clock::now();
+                uint64_t dur = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+                collector->AddCryptoTimeUs(uavA_idx, dur);
+                collector->AddCryptoOp(uavA_idx, "AEAD_ENCRYPT_DATA", dur);
+                if (!ct.ok) { std::cerr << "[UAV A] data encrypt failed: " << ct.err << "\n"; return; }
                 collector->OnPacketSent(uavA_idx, ct.data.size());
                 helper.SendUdpBytes(uavA_idx, uavB_ip, DATA_PORT, ct.data);
             });
         }
     });
 
-    // Stop simulation
+    // small sim debug prints
+    Simulator::Schedule(Seconds(0.5), []() { std::cerr << "[SIMDBG] t=" << Simulator::Now().GetSeconds() << "\n"; });
+    Simulator::Schedule(Seconds(simDuration/2.0), []() { std::cerr << "[SIMDBG] half time t=" << Simulator::Now().GetSeconds() << "\n"; });
+    Simulator::Schedule(Seconds(simDuration + 0.01), []() { std::cerr << "[SIMDBG] stop deadline t=" << Simulator::Now().GetSeconds() << "\n"; });
+
+    // watchdog: if Simulator::Run() hasn't returned by wall-time (simDuration + grace), force a best-effort write + exit
+    std::atomic<bool> run_returned(false);
+    std::thread watchdog([&collector, outDir, simDuration, grace, &run_returned]() {
+        double wait_seconds = simDuration + grace;
+        std::this_thread::sleep_for(std::chrono::duration<double>(wait_seconds));
+        if (run_returned.load()) return;
+        std::cerr << "[WATCHDOG] timeout (" << wait_seconds << "s) — attempting to write outputs and exit\n";
+
+        try {
+            std::filesystem::path csvSummary = outDir / "metrics_summary.csv";
+            std::filesystem::path csvDetails = outDir / "metrics_node_details.csv";
+            std::filesystem::path txtSummary = outDir / "summary.txt";
+
+            bool ok1 = collector->WriteSummaryCsv(csvSummary.string());
+            bool ok2 = collector->WriteNodeDetailsCsv(csvDetails.string());
+            std::cerr << "[WATCHDOG] WriteSummaryCsv -> " << (ok1 ? "OK" : "FAIL")
+                      << ", WriteNodeDetailsCsv -> " << (ok2 ? "OK" : "FAIL") << "\n";
+
+            std::ofstream fout(txtSummary.string(), std::ios::out | std::ios::trunc);
+            if (fout.is_open()) {
+                collector->PrintSummary(fout);
+                fout.close();
+                std::cerr << "[WATCHDOG] Wrote summary to " << txtSummary << "\n";
+            } else {
+                std::cerr << "[WATCHDOG] Failed to open " << txtSummary << " for writing\n";
+            }
+        } catch (const std::exception &ex) {
+            std::cerr << "[WATCHDOG] exception while writing outputs: " << ex.what() << "\n";
+        }
+
+        // Last resort: hard exit.
+        std::_Exit(2);
+    });
+    watchdog.detach();
+
+    // stop/run
     Simulator::Stop(Seconds(simDuration));
     Simulator::Run();
+    run_returned.store(true); // mark that Run returned
 
-    // Print metrics
-    collector->PrintSummary();
-    collector->WriteSummaryCsv("build/metrics_summary.csv");
-    collector->WriteNodeDetailsCsv("build/metrics_node_details.csv");
+    // normal post-run: write and exit
+    std::cerr << "[SIMDBG] Simulator::Run returned at t=" << Simulator::Now().GetSeconds() << "\n";
 
-    // Optionally write CSV (uncomment if WriteCsv exists)
-    // std::ostringstream oss;
-    // auto tnow = std::time(nullptr);
-    // oss << "logs/metrics-" << std::put_time(std::localtime(&tnow), "%Y%m%d-%H%M%S") << ".csv";
-    // collector->WriteCsv(oss.str());
+    std::filesystem::path csvSummary = outDir / "metrics_summary.csv";
+    std::filesystem::path csvDetails = outDir / "metrics_node_details.csv";
+    std::filesystem::path txtSummary = outDir / "summary.txt";
+
+    try {
+        bool ok1 = collector->WriteSummaryCsv(csvSummary.string());
+        bool ok2 = collector->WriteNodeDetailsCsv(csvDetails.string());
+        std::cerr << "[INFO] WriteSummaryCsv -> " << (ok1 ? "OK" : "FAIL") << ", WriteNodeDetailsCsv -> " << (ok2 ? "OK" : "FAIL") << "\n";
+
+        std::ofstream fout(txtSummary.string(), std::ios::out | std::ios::trunc);
+        if (fout.is_open()) {
+            collector->PrintSummary(fout);
+            fout.close();
+            std::cerr << "[INFO] Wrote summary text to " << txtSummary << "\n";
+        } else {
+            std::cerr << "[WARN] Could not open " << txtSummary << " for writing\n";
+        }
+    } catch (const std::exception &ex) {
+        std::cerr << "[ERR] Exception while writing outputs: " << ex.what() << "\n";
+    }
+    std::cerr << "[INFO] Reached Here\n";
 
     Simulator::Destroy();
+    std::cerr << "[INFO] Simulation finished. Outputs in: " << outDir << "\n";
     return 0;
 }

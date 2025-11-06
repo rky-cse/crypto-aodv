@@ -1,21 +1,11 @@
 // simulations/auth_scenario.cc
 //
-// Simple ns-3 scenario demonstrating:
-//  - a foreign UAV (node 0) authenticating to a Base Station (node N-1)
-//    through intermediate relay UAVs using AODV routing.
-//  - uses AuthManager + SodiumCrypto backend for auth messages
-//  - collects basic metrics via MetricsCollector
+// Updated auth scenario: writes timestamped results, records crypto timings,
+// and writes CSV/text summaries at the end. Adds a simple watchdog that will
+// write outputs and force-exit if the simulator doesn't finish in time.
 //
-// Build: make sure your CMake links against ns-3 and your project library.
-// Run: Simulator::Run() will execute and at the end metrics will be printed.
-//
-// Notes:
-//  - This file assumes the helper modules exist:
-//      aodv_bridge::Ns3Helper (ns3_helpers.cpp)
-//      uavauth::AuthManager (auth_manager.cpp)
-//      uavcrypto::CreateCryptoBackend() (sodium_crypto.cpp)
-//      metrics::MetricsCollector (metrics_collector.cpp)
-//  - Ports: BS listens on RX_PORT (9000) for auth requests; UAV listens on RESPONSE_PORT (9001).
+// Notes: assumes helper modules exist (ns3_helpers.cpp, auth_manager.cpp,
+// sodium_crypto.cpp, metrics_collector.cpp)
 
 #include <ns3/core-module.h>
 #include <ns3/network-module.h>
@@ -24,13 +14,20 @@
 #include <iostream>
 #include <memory>
 #include <chrono>
+#include <filesystem>
+#include <ctime>
+#include <sstream>
+#include <iomanip>
+#include <fstream>
+#include <thread>
+#include <atomic>
+#include <cstdlib>
+#include <unistd.h> // for getcwd
 
-#include "aodv_bridge/ns3_helpers.cpp"         // assuming single-file layout; or include header if available
-#include "auth/auth_manager.cpp"               // same assumption: direct compile unit inclusion ok
-#include "crypto/sodium_crypto.cpp"            // to get CreateCryptoBackend()
-#include "metrics/metrics_collector.cpp"       // metrics
-
-// If you compiled modules separately, include their headers instead and link with the library.
+#include "aodv_bridge/ns3_helpers.cpp"
+#include "auth/auth_manager.cpp"
+#include "crypto/sodium_crypto.cpp"
+#include "metrics/metrics_collector.cpp"
 
 using namespace ns3;
 using namespace std::chrono;
@@ -44,21 +41,54 @@ static const uint16_t RESPONSE_PORT = 9001;
 
 int main(int argc, char **argv) {
     CommandLine cmd;
-    uint32_t nodeCount = 5; // default: {0:foreign UAV, 1..3 relays, 4:BS}
+    uint32_t nodeCount = 5; // default: {0:foreign UAV, 1..N-2 relays, N-1:BS}
     double simDuration = 10.0; // seconds
+    double watchdogGrace = 5.0; // seconds beyond simDuration before forced shutdown
+    std::string outBase = "results";
     cmd.AddValue("nodes", "Number of nodes (min 3)", nodeCount);
     cmd.AddValue("time", "Simulation time (s)", simDuration);
+    cmd.AddValue("outdir", "Base output directory (default: results)", outBase);
+    cmd.AddValue("grace", "Watchdog grace period (s) added to simDuration before forced shutdown", watchdogGrace);
     cmd.Parse(argc, argv);
 
     if (nodeCount < 3) nodeCount = 3;
 
-    // Create helpers
+    // timestamped output dir: results/YYYYMMDD-HHMMSS
+    std::filesystem::path basePath(outBase);
+    std::time_t tnow = std::time(nullptr);
+    std::tm tmnow;
+#if defined(_WIN32)
+    gmtime_s(&tmnow, &tnow);
+#else
+    gmtime_r(&tnow, &tmnow);
+#endif
+    std::ostringstream ts;
+    ts << std::put_time(&tmnow, "%Y%m%d-%H%M%S");
+    std::string runDirName = ts.str();
+    std::filesystem::path outDir = basePath / runDirName;
+
+    try {
+        std::filesystem::create_directories(outDir);
+    } catch (const std::exception &e) {
+        std::cerr << "Failed to create output directory '" << outDir.string() << "': " << e.what() << "\n";
+        return 1;
+    }
+
+    // debug: current working directory
+    if (char *cwd = getcwd(nullptr, 0)) {
+        std::cerr << "[DEBUG] cwd = " << cwd << "\n";
+        free(cwd);
+    }
+
+    std::cout << "Outputs will be written to: " << outDir << "\n";
+
+    // Create helpers and network
     Ns3Helper helper;
     helper.BuildWifiNodes(nodeCount);
     helper.InstallAodvRouting();
     helper.AssignIpv4Addresses("10.1.1.0", "255.255.255.0");
 
-    // Indices
+    // indices
     uint32_t foreignIdx = 0;
     uint32_t bsIdx = nodeCount - 1;
 
@@ -68,55 +98,45 @@ int main(int argc, char **argv) {
     std::cout << "Foreign UAV IP: " << foreignIp << "\n";
     std::cout << "BS IP: " << bsIp << "\n";
 
-    // Create crypto backends and auth managers for UAV and BS
+    // crypto backends / auth managers
     auto crypto_uav = CreateCryptoBackend();
-    auto crypto_bs = CreateCryptoBackend();
+    auto crypto_bs  = CreateCryptoBackend();
+    auto auth_uav   = CreateAuthManager(std::move(crypto_uav));
+    auto auth_bs    = CreateAuthManager(std::move(crypto_bs));
 
-    auto auth_uav = CreateAuthManager(std::move(crypto_uav));
-    auto auth_bs  = CreateAuthManager(std::move(crypto_bs));
-
-    // Metrics collector
+    // metrics collector
     auto collector = std::make_shared<MetricsCollector>();
-    for (uint32_t i = 0; i < nodeCount; ++i) {
-        collector->RegisterNode(i, helper.GetNode(i));
-    }
+    for (uint32_t i = 0; i < nodeCount; ++i) collector->RegisterNode(i, helper.GetNode(i));
 
-    // Pre-generate BS Ed25519 keypair (so BS has stable identity)
-    // We'll use the crypto backend inside auth_bs to get a keypair by calling GenerateEd25519Keypair via a temporary ICrypto.
-    // But auth_manager does not expose direct keypair generation function; for simplicity, instantiate another backend to generate keys.
+    // Pre-generate BS Ed25519 keypair
     auto tempCrypto = CreateCryptoBackend();
     auto bs_keys = tempCrypto->GenerateEd25519Keypair();
     if (!bs_keys.ok) {
         std::cerr << "BS key generation failed: " << bs_keys.err << "\n";
         return 1;
     }
-    // split sk||pk (libsodium returns 64||32)
+    // split sk||pk (libsodium returns sk(64) || pk(32))
     std::vector<uint8_t> bs_sk(bs_keys.data.begin(), bs_keys.data.begin() + 64);
     std::vector<uint8_t> bs_pk(bs_keys.data.begin() + 64, bs_keys.data.end());
 
-    // UAV generates its AuthRequest at scheduled time and sends to BS
+    // Schedule: foreign UAV generates AuthRequest at 1s
     Simulator::Schedule(Seconds(1.0), [&]() {
-        // Measure crypto time for keygen+sign
         auto t0 = high_resolution_clock::now();
         AuthRequest req = auth_uav->GenerateAuthRequest();
         auto t1 = high_resolution_clock::now();
         auto dur = duration_cast<microseconds>(t1 - t0).count();
         collector->AddCryptoTimeUs(foreignIdx, static_cast<uint64_t>(dur));
+        collector->AddCryptoOp(foreignIdx, "AUTH_REQ_GEN", static_cast<uint64_t>(dur));
 
-        // Serialize and send to BS
         auto wire = req.serialize();
         collector->OnPacketSent(foreignIdx, wire.size());
         bool ok = helper.SendUdpBytes(foreignIdx, bsIp, RX_PORT, wire);
-        if (!ok) {
-            std::cerr << "Failed to send AuthRequest\n";
-        } else {
-            std::cout << "AuthRequest sent from node " << foreignIdx << " to BS\n";
-        }
+        if (!ok) std::cerr << "Failed to send AuthRequest\n";
+        else std::cout << "AuthRequest sent from node " << foreignIdx << " to BS\n";
     });
 
-    // BS receiver: on receiving AuthRequest, verify and send AuthAck back to sender
+    // BS receiver: verify and reply
     helper.RegisterUdpReceiver(bsIdx, RX_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
-        // Parse request
         auto maybe = uavauth::AuthRequest::deserialize(payload);
         if (!maybe) {
             std::cerr << "BS: failed to parse AuthRequest\n";
@@ -124,28 +144,25 @@ int main(int argc, char **argv) {
         }
         AuthRequest req = *maybe;
 
-        // Record packet reception; convert timestamp (we used ms) to seconds
         double sendTimeSec = static_cast<double>(req.timestamp) / 1000.0;
         collector->OnPacketReceived(bsIdx, payload.size(), sendTimeSec);
 
-        // Verify & respond (measure crypto time)
         auto t0 = high_resolution_clock::now();
         AuthAck ack = auth_bs->VerifyAndRespondAuthRequest(req, bs_sk, bs_pk);
         auto t1 = high_resolution_clock::now();
         auto dur = duration_cast<microseconds>(t1 - t0).count();
         collector->AddCryptoTimeUs(bsIdx, static_cast<uint64_t>(dur));
+        collector->AddCryptoOp(bsIdx, "AUTH_REQ_VERIFY_AND_ACK", static_cast<uint64_t>(dur));
 
-        // Serialize and send ack back to 'from' address (origin IP)
+        // send ack back to sender on RESPONSE_PORT
         auto wire = ack.serialize();
         collector->OnPacketSent(bsIdx, wire.size());
-
-        // send to the original sender IP on RESPONSE_PORT
         helper.SendUdpBytes(bsIdx, from, RESPONSE_PORT, wire);
         std::cout << "BS: AuthAck sent to " << from << "\n";
     });
 
-    // UAV receiver: listens for AuthAck, verifies and prints result
-    helper.RegisterUdpReceiver(foreignIdx, RESPONSE_PORT, [&](Ipv4Address from, std::vector<uint8_t> payload) {
+    // UAV receiver: verify ack
+    helper.RegisterUdpReceiver(foreignIdx, RESPONSE_PORT, [&](Ipv4Address /*from*/, std::vector<uint8_t> payload) {
         auto maybe = uavauth::AuthAck::deserialize(payload);
         if (!maybe) {
             std::cerr << "UAV: failed to parse AuthAck\n";
@@ -153,34 +170,101 @@ int main(int argc, char **argv) {
         }
         AuthAck ack = *maybe;
 
-        // Record reception time (we don't have sendTime here; use current sim time as receiver)
-        double sendTimeSec = 0.0; // unknown in this simple flow
-        collector->OnPacketReceived(foreignIdx, payload.size(), sendTimeSec);
+        // we don't have original sender time here; record reception with 0.0
+        collector->OnPacketReceived(foreignIdx, payload.size(), 0.0);
 
-        // Verify ack and derive session key (measure crypto)
         auto t0 = high_resolution_clock::now();
         bool ok = auth_uav->VerifyAuthAck(ack, bs_pk);
         auto t1 = high_resolution_clock::now();
         auto dur = duration_cast<microseconds>(t1 - t0).count();
         collector->AddCryptoTimeUs(foreignIdx, static_cast<uint64_t>(dur));
+        collector->AddCryptoOp(foreignIdx, "AUTH_ACK_VERIFY", static_cast<uint64_t>(dur));
 
         if (ok) {
+            std::vector<uint8_t> sess = auth_uav->GetSessionKey();
             std::cout << "UAV: Authenticated with BS successfully. Session key length = "
-                      << auth_uav->GetSessionKey().size() << " bytes\n";
+                      << sess.size() << " bytes\n";
         } else {
             std::cout << "UAV: Authentication with BS failed\n";
         }
     });
 
-    // Stop simulation after simDuration seconds
+    // --- Watchdog: non-invasive; writes outputs & forces exit if simulator hung ---
+    std::atomic<bool> sim_run_returned(false);
+    std::thread watchdog([&collector, outDir, simDuration, watchdogGrace, &sim_run_returned]() {
+        double waitS = simDuration + watchdogGrace;
+        std::this_thread::sleep_for(std::chrono::duration<double>(waitS));
+        if (sim_run_returned.load()) return; // finished normally
+
+        std::cerr << "[WATCHDOG] timer expired (" << waitS << "s). Attempting to write outputs and exit.\n";
+        try {
+            std::filesystem::path csvSummary = outDir / "metrics_summary.csv";
+            std::filesystem::path csvDetails = outDir / "metrics_details.csv";
+            std::filesystem::path txtSummary = outDir / "summary.txt";
+
+            bool ok1 = collector->WriteSummaryCsv(csvSummary.string());
+            bool ok2 = collector->WriteNodeDetailsCsv(csvDetails.string());
+            std::cerr << "[WATCHDOG] WriteSummaryCsv -> " << (ok1 ? "OK" : "FAIL") << "\n";
+            std::cerr << "[WATCHDOG] WriteNodeDetailsCsv -> " << (ok2 ? "OK" : "FAIL") << "\n";
+
+            std::ofstream fout(txtSummary.string());
+            if (fout.is_open()) {
+                collector->PrintSummary(fout);
+                fout.close();
+                std::cerr << "[WATCHDOG] Wrote summary text to: " << txtSummary << "\n";
+            } else {
+                int e = errno;
+                std::cerr << "[WATCHDOG] Failed to open summary text file: '" << txtSummary.string()
+                          << "'; errno=" << e << " (" << (e ? std::strerror(e) : "0") << ")\n";
+            }
+        } catch (const std::exception &ex) {
+            std::cerr << "[WATCHDOG] exception while writing outputs: " << ex.what() << "\n";
+        }
+
+        // best-effort destroy and force-exit
+        try { Simulator::Stop(Seconds(0.0)); } catch (...) { /*ignore*/ }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        try { Simulator::Destroy(); } catch (...) { /*ignore*/ }
+        std::cerr << "[WATCHDOG] exiting process now\n";
+        std::_Exit(1);
+    });
+    watchdog.detach();
+
+    // run simulator
     Simulator::Stop(Seconds(simDuration));
     Simulator::Run();
+    sim_run_returned.store(true);
 
-    // Print metrics
+    // normal completion: print/write outputs
+    std::cerr << "[SIMDBG] Simulator::Run returned at t=" << Simulator::Now().GetSeconds() << "\n";
     collector->PrintSummary();
-    collector->WriteSummaryCsv("build/metrics_summary.csv");
-    collector->WriteNodeDetailsCsv("build/metrics_node_details.csv");
+
+    std::filesystem::path csvSummary = outDir / "metrics_summary.csv";
+    std::filesystem::path csvDetails = outDir / "metrics_details.csv";
+    std::filesystem::path txtSummary = outDir / "summary.txt";
+
+    // debug: print absolute paths
+    try {
+        std::cerr << "[DEBUG] summary csv absolute = " << std::filesystem::absolute(csvSummary).string() << "\n";
+    } catch (...) { /*ignore*/ }
+
+    bool wroteSummary = collector->WriteSummaryCsv(csvSummary.string());
+    bool wroteDetails = collector->WriteNodeDetailsCsv(csvDetails.string());
+    if (wroteSummary) std::cout << "Wrote CSV summary to " << csvSummary << "\n";
+    else std::cerr << "Failed to write " << csvSummary << "\n";
+    if (wroteDetails) std::cout << "Wrote CSV details to " << csvDetails << "\n";
+    else std::cerr << "Failed to write " << csvDetails << "\n";
+
+    std::ofstream fout(txtSummary.string());
+    if (fout.is_open()) {
+        collector->PrintSummary(fout);
+        fout.close();
+        std::cout << "Wrote summary text to: " << txtSummary << "\n";
+    } else {
+        std::cerr << "Failed to open summary text file: " << txtSummary << "\n";
+    }
 
     Simulator::Destroy();
+    std::cout << "Simulation finished. Outputs in: " << outDir << "\n";
     return 0;
 }
