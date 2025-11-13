@@ -6,29 +6,35 @@
 //                public keys, and signature).
 // - AuthAck:    response from BS (status, message, server pubkey, signature).
 //
-// Wire format (all integers in network byte order / big-endian):
-//  AuthRequest:
-//    uint32_t version
-//    uint64_t timestamp
-//    uint64_t nonce
-//    uint32_t len_ed25519_pub
+// Wire format (we prepend an 8-byte double sender timestamp for e2e measurement).
+// Remaining integers are big-endian as before.
+//
+//  AuthRequest (serialized layout):
+//    double send_time_s            (8 bytes, IEEE-754 double, raw memcpy)
+//    uint32_t version              (4 bytes, big-endian)
+//    uint64_t timestamp            (8 bytes, big-endian) -- epoch ms
+//    uint64_t nonce                (8 bytes, big-endian)
+//    uint32_t len_ed25519_pub      (4 bytes, big-endian)
 //    bytes ed25519_pub
-//    uint32_t len_x25519_pub
+//    uint32_t len_x25519_pub       (4 bytes, big-endian)
 //    bytes x25519_pub
-//    uint32_t len_signature
+//    uint32_t len_signature        (4 bytes, big-endian)
 //    bytes signature
 //
-//  AuthAck:
-//    uint32_t version
-//    uint32_t status   (0 = ok, non-zero = error)
-//    uint32_t len_msg
-//    bytes msg (utf-8)
-//    uint32_t len_server_ed25519_pub
+//  AuthAck (serialized layout):
+//    double send_time_s            (8 bytes, IEEE-754 double, raw memcpy)
+//    uint32_t version              (4 bytes, big-endian)
+//    uint32_t status               (4 bytes, big-endian)
+//    uint32_t len_msg              (4 bytes, big-endian)
+//    bytes msg
+//    uint32_t len_server_ed25519_pub (4 bytes, big-endian)
 //    bytes server_ed25519_pub
-//    uint32_t len_signature
+//    uint32_t len_signature        (4 bytes, big-endian)
 //    bytes signature
 //
-// The header is intentionally small and dependency-free.
+// Note: send_time_s is intended to carry Simulator::Now().GetSeconds() stamped
+// by the sender just before serialization. It is not included in the signed
+// region so cryptographic signing semantics remain unchanged.
 
 #include <cstdint>
 #include <vector>
@@ -81,6 +87,7 @@ inline bool read_u64(const std::vector<uint8_t>& in, size_t& pos, uint64_t& out)
 
 // AuthRequest: UAV -> BS
 struct AuthRequest {
+    double send_time_s = 0.0; // new: sender's simulator time in seconds (double)
     uint32_t version = 1;
     uint64_t timestamp = 0; // epoch ms
     uint64_t nonce = 0;     // random nonce (64-bit)
@@ -91,6 +98,15 @@ struct AuthRequest {
     // Serialize to wire format
     std::vector<uint8_t> serialize() const {
         std::vector<uint8_t> out;
+        // reserve approximate size
+        size_t approx = sizeof(double) + 4 + 8 + 8 + 4 + ed25519_pub.size() + 4 + x25519_pub.size() + 4 + signature.size();
+        out.reserve(approx);
+
+        // send_time_s raw bytes
+        uint8_t tmpd[sizeof(double)];
+        std::memcpy(tmpd, &send_time_s, sizeof(double));
+        out.insert(out.end(), tmpd, tmpd + sizeof(double));
+
         append_u32(out, version);
         append_u64(out, timestamp);
         append_u64(out, nonce);
@@ -113,6 +129,11 @@ struct AuthRequest {
         size_t pos = 0;
         uint32_t tmp32;
         uint64_t tmp64;
+
+        // need at least size of double + next fields
+        if (pos + sizeof(double) > in.size()) return std::nullopt;
+        std::memcpy(&r.send_time_s, in.data() + pos, sizeof(double));
+        pos += sizeof(double);
 
         if (!read_u32(in, pos, tmp32)) return std::nullopt;
         r.version = tmp32;
@@ -146,6 +167,7 @@ struct AuthRequest {
 
 // AuthAck: BS -> UAV
 struct AuthAck {
+    double send_time_s = 0.0; // new: sender's simulator time in seconds (double)
     uint32_t version = 1;
     uint32_t status = 0; // 0 = OK, non-zero = error code
     std::string msg;     // optional human-readable message
@@ -154,6 +176,13 @@ struct AuthAck {
 
     std::vector<uint8_t> serialize() const {
         std::vector<uint8_t> out;
+        size_t approx = sizeof(double) + 4 + 4 + 4 + msg.size() + 4 + server_ed25519_pub.size() + 4 + signature.size();
+        out.reserve(approx);
+
+        uint8_t tmpd[sizeof(double)];
+        std::memcpy(tmpd, &send_time_s, sizeof(double));
+        out.insert(out.end(), tmpd, tmpd + sizeof(double));
+
         append_u32(out, version);
         append_u32(out, status);
 
@@ -173,6 +202,10 @@ struct AuthAck {
         AuthAck a;
         size_t pos = 0;
         uint32_t tmp32;
+
+        if (pos + sizeof(double) > in.size()) return std::nullopt;
+        std::memcpy(&a.send_time_s, in.data() + pos, sizeof(double));
+        pos += sizeof(double);
 
         if (!read_u32(in, pos, tmp32)) return std::nullopt;
         a.version = tmp32;

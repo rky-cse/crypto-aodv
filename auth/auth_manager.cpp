@@ -39,8 +39,9 @@ public:
     // Generate AuthRequest on the client side.
     AuthRequest GenerateAuthRequest() {
         AuthRequest req;
+        req.send_time_s = 0.0; // scenario should stamp Simulator::Now() before send
         req.version = 1;
-        // timestamp ms since epoch
+        // timestamp ms since epoch (kept for protocol semantics / replay checks)
         req.timestamp = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
 
@@ -121,6 +122,7 @@ public:
                                        const std::vector<uint8_t>& bs_ed_sk,
                                        const std::vector<uint8_t>& bs_ed_pk) {
         AuthAck ack;
+        ack.send_time_s = 0.0; // scenario or caller should stamp before sending
         ack.version = 1;
         ack.status = 1; // default: error
 
