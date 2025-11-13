@@ -196,8 +196,8 @@ CMakeFiles/uav_data_scenario.dir/clean:
 # Target rules for target CMakeFiles/crypto_test.dir
 
 # All Build rule for target.
-CMakeFiles/crypto_test.dir/all: _deps/catch2-build/src/CMakeFiles/Catch2WithMain.dir/all
 CMakeFiles/crypto_test.dir/all: _deps/catch2-build/src/CMakeFiles/Catch2.dir/all
+CMakeFiles/crypto_test.dir/all: _deps/catch2-build/src/CMakeFiles/Catch2WithMain.dir/all
 CMakeFiles/crypto_test.dir/all: CMakeFiles/uav_core.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/crypto_test.dir/build.make CMakeFiles/crypto_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/crypto_test.dir/build.make CMakeFiles/crypto_test.dir/build

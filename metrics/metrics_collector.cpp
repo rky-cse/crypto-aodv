@@ -5,6 +5,7 @@
 //
 // Fixed: removed nested-lock deadlock (CaptureFinalEnergyStates no longer locks).
 // Added missing includes and simplified debug output.
+// Updated: added explicit energy source registration to reliably capture energy.
 
 #include <ns3/core-module.h>
 #include <ns3/network-module.h>
@@ -72,9 +73,19 @@ public:
         std::lock_guard<std::mutex> lk(mu_);
         nodes_[nodeIndex]; // ensure entry exists
         nodePtrs_[nodeIndex] = node;
-        // capture initial energy if BasicEnergySource present
+        // capture initial energy if BasicEnergySource present (fallback)
         Ptr<ns3::energy::BasicEnergySource> bes = GetBasicEnergySource(node);
-        nodes_[nodeIndex].initial_energy_j = (bes ? bes->GetRemainingEnergy() : 0.0);
+        nodes_[nodeIndex].initial_energy_j = (bes ? bes->GetRemainingEnergy() : nodes_[nodeIndex].initial_energy_j);
+    }
+
+    // New public API: register the exact energy source pointer installed on a node.
+    // This is more robust than trying to call node->GetObject<BasicEnergySource>().
+    void RegisterEnergySource(uint32_t nodeIndex, Ptr<ns3::energy::BasicEnergySource> source) {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (source) {
+            energySources_[nodeIndex] = source;
+            nodes_[nodeIndex].initial_energy_j = source->GetRemainingEnergy();
+        }
     }
 
     void OnPacketSent(uint32_t nodeIndex, uint64_t bytes) {
@@ -323,6 +334,7 @@ public:
 private:
     std::unordered_map<uint32_t, NodeMetrics> nodes_;
     std::unordered_map<uint32_t, Ptr<Node>> nodePtrs_;
+    std::unordered_map<uint32_t, Ptr<ns3::energy::BasicEnergySource>> energySources_;
     Time first_send_time_ = Seconds(0);
     Time last_activity_time_ = Seconds(0);
     std::mutex mu_;
@@ -336,10 +348,18 @@ private:
 
     // NON-locking function: capture final energy; caller must hold mu_
     void CaptureFinalEnergyStatesUnlocked() {
-        for (auto &p : nodePtrs_) {
-            uint32_t idx = p.first;
-            Ptr<Node> node = p.second;
-            Ptr<ns3::energy::BasicEnergySource> bes = GetBasicEnergySource(node);
+        // prefer explicit energySources_ mapping if present; otherwise try nodePtrs_
+        for (auto &entry : nodes_) {
+            uint32_t idx = entry.first;
+            Ptr<ns3::energy::BasicEnergySource> bes;
+            auto it = energySources_.find(idx);
+            if (it != energySources_.end()) {
+                bes = it->second;
+            } else {
+                // fallback: try getting from stored node pointer
+                auto pit = nodePtrs_.find(idx);
+                if (pit != nodePtrs_.end()) bes = GetBasicEnergySource(pit->second);
+            }
             nodes_[idx].final_energy_j = (bes ? bes->GetRemainingEnergy() : 0.0);
         }
     }

@@ -10,6 +10,7 @@
 #include <ns3/core-module.h>
 #include <ns3/network-module.h>
 #include <ns3/internet-module.h>
+#include <ns3/energy-module.h>
 
 #include <iostream>
 #include <memory>
@@ -109,10 +110,69 @@ int main(int argc, char** argv) {
 
     std::cerr << "[INFO] UAV A IP: " << uavA_ip << "  UAV B IP: " << uavB_ip << "  BS IP: " << bs_ip << "\n";
 
-    // Metrics collector
+    // --- Install energy sources before registering nodes so initial energy is captured
+    ns3::BasicEnergySourceHelper esHelper;
+    // set a sensible default initial energy (J). Adjust as you like.
+    esHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(500.0));
+
+    ns3::NodeContainer nodes;
+    for (uint32_t i = 0; i < nodeCount; ++i) {
+        nodes.Add(helper.GetNode(i));
+    }
+    // capture the returned container so we can query energy sources reliably
+    ns3::energy::EnergySourceContainer esc = esHelper.Install(nodes);
+    std::cerr << "[INFO] Installed BasicEnergySource on " << nodeCount << " nodes\n";
+
+    // Optional: attach a simple Wifi radio energy model if you have device container
+    // If your Ns3Helper exposes a device container accessor, uncomment and use it:
+    // after you built nodes and created devices:
+    NetDeviceContainer devs = helper.GetDeviceContainer();
+
+    // after `ns3::EnergySourceContainer esc = esHelper.Install(nodes);` (you already do this)
+    // insert the radio energy model install using esc:
+    ns3::WifiRadioEnergyModelHelper radioHelper;
+    radioHelper.Set("TxCurrentA", DoubleValue(0.038));
+    radioHelper.Set("RxCurrentA", DoubleValue(0.021));
+    radioHelper.Set("IdleCurrentA", DoubleValue(0.005));
+    radioHelper.Set("SleepCurrentA", DoubleValue(0.001));
+    ns3::energy::DeviceEnergyModelContainer demc = radioHelper.Install(devs, esc);
+    std::cerr << "[INFO] Installed WifiRadioEnergyModel models=" << demc.GetN() << "\n";
+
+    // Metrics collector (register nodes AFTER energy sources were installed)
     auto collector = std::make_shared<MetricsCollector>();
     for (uint32_t i = 0; i < nodeCount; ++i) {
         collector->RegisterNode(i, helper.GetNode(i));
+    }
+
+    // Register explicit energy sources from esc into collector so we can reliably read them later
+    for (uint32_t i = 0; i < esc.GetN() && i < nodeCount; ++i) {
+        Ptr<ns3::energy::EnergySource> es = esc.Get(i); // base class pointer in ns3::energy
+        if (!es) {
+            std::cerr << "[WARN] esc.Get(" << i << ") returned nullptr\n";
+            continue;
+        }
+        Ptr<ns3::energy::BasicEnergySource> src = DynamicCast<ns3::energy::BasicEnergySource>(es);
+        if (!src) {
+            std::cerr << "[WARN] esc.Get(" << i << ") is not a BasicEnergySource (type may differ)\n";
+            continue;
+        }
+        collector->RegisterEnergySource(i, src);
+        std::cerr << "[INFO] Registered energy source for node " << i << " initialE=" << src->GetRemainingEnergy() << " J\n";
+    }
+
+    // Debug: print initial energy values for verification (use esc instead of node->GetObject)
+    for (uint32_t i = 0; i < esc.GetN() && i < nodeCount; ++i) {
+        Ptr<ns3::energy::EnergySource> es = esc.Get(i);
+        if (!es) {
+            std::cerr << "[DEBUG] node " << i << " has NO EnergySource\n";
+            continue;
+        }
+        Ptr<ns3::energy::BasicEnergySource> bes = DynamicCast<ns3::energy::BasicEnergySource>(es);
+        if (bes) {
+            std::cerr << "[DEBUG] node " << i << " initial energy = " << bes->GetRemainingEnergy() << " J\n";
+        } else {
+            std::cerr << "[DEBUG] node " << i << " energy source is not BasicEnergySource\n";
+        }
     }
 
     // crypto / auth managers
@@ -150,8 +210,9 @@ int main(int argc, char** argv) {
             return;
         }
         AuthRequest req = *maybe;
-        double sendTime = static_cast<double>(req.timestamp) / 1000.0;
-        collector->OnPacketReceived(bs_idx, payload.size(), sendTime);
+
+        // Use simulator time as baseline for metrics (consistent time base)
+        collector->OnPacketReceived(bs_idx, payload.size(), Simulator::Now().GetSeconds());
 
         auto t0 = std::chrono::high_resolution_clock::now();
         AuthAck ack = auth_bs->VerifyAndRespondAuthRequest(req, bs_sk, bs_pk);
@@ -180,7 +241,8 @@ int main(int argc, char** argv) {
         auto maybe = uavauth::AuthAck::deserialize(payload);
         if (!maybe) { std::cerr << "[UAV A] failed to parse AuthAck\n"; return; }
         AuthAck ack = *maybe;
-        collector->OnPacketReceived(uavA_idx, payload.size(), 0.0);
+        // record receive using simulator time as baseline
+        collector->OnPacketReceived(uavA_idx, payload.size(), Simulator::Now().GetSeconds());
         auto t0 = std::chrono::high_resolution_clock::now();
         bool ok = auth_uavA->VerifyAuthAck(ack, bs_pk);
         auto t1 = std::chrono::high_resolution_clock::now();
@@ -194,7 +256,8 @@ int main(int argc, char** argv) {
         auto maybe = uavauth::AuthAck::deserialize(payload);
         if (!maybe) { std::cerr << "[UAV B] failed to parse AuthAck\n"; return; }
         AuthAck ack = *maybe;
-        collector->OnPacketReceived(uavB_idx, payload.size(), 0.0);
+        // record receive using simulator time as baseline
+        collector->OnPacketReceived(uavB_idx, payload.size(), Simulator::Now().GetSeconds());
         auto t0 = std::chrono::high_resolution_clock::now();
         bool ok = auth_uavB->VerifyAuthAck(ack, bs_pk);
         auto t1 = std::chrono::high_resolution_clock::now();
@@ -217,7 +280,8 @@ int main(int argc, char** argv) {
         collector->AddCryptoOp(uavA_idx, "AEAD_DECRYPT_GROUP", dur);
         if (!dec.ok) { std::cerr << "[UAV A] group decrypt failed: " << dec.err << "\n"; return; }
         group_key = dec.data;
-        collector->OnPacketReceived(uavA_idx, payload.size(), 0.0);
+        // use simulator time baseline for metrics
+        collector->OnPacketReceived(uavA_idx, payload.size(), Simulator::Now().GetSeconds());
         std::cerr << "[UAV A] got group key (len=" << group_key.size() << ")\n";
     });
 
@@ -233,7 +297,8 @@ int main(int argc, char** argv) {
         collector->AddCryptoOp(uavB_idx, "AEAD_DECRYPT_GROUP", dur);
         if (!dec.ok) { std::cerr << "[UAV B] group decrypt failed: " << dec.err << "\n"; return; }
         group_key = dec.data;
-        collector->OnPacketReceived(uavB_idx, payload.size(), 0.0);
+        // use simulator time baseline for metrics
+        collector->OnPacketReceived(uavB_idx, payload.size(), Simulator::Now().GetSeconds());
         std::cerr << "[UAV B] got group key (len=" << group_key.size() << ")\n";
     });
 

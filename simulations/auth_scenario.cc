@@ -10,6 +10,7 @@
 #include <ns3/core-module.h>
 #include <ns3/network-module.h>
 #include <ns3/internet-module.h>
+#include <ns3/energy-module.h>
 
 #include <iostream>
 #include <memory>
@@ -98,15 +99,52 @@ int main(int argc, char **argv) {
     std::cout << "Foreign UAV IP: " << foreignIp << "\n";
     std::cout << "BS IP: " << bsIp << "\n";
 
+    // --- Install a BasicEnergySource on all nodes BEFORE registering nodes so
+    //     initial energy is captured by MetricsCollector.RegisterNode(...)
+    {
+        ns3::BasicEnergySourceHelper esHelper;
+        // sensible default initial energy (J). Change if needed.
+        esHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(500.0));
+
+        ns3::NodeContainer nc;
+        for (uint32_t i = 0; i < nodeCount; ++i) {
+            nc.Add(helper.GetNode(i));
+        }
+        esHelper.Install(nc);
+        std::cerr << "[INFO] Installed BasicEnergySource on " << nodeCount << " nodes\n";
+
+        // Optional: attach radio energy model if you have a NetDevice container available.
+        // If your Ns3Helper provides GetDeviceContainer(), you can attach a WifiRadioEnergyModel
+        // (uncomment and adapt when available):
+        //
+        // ns3::WifiRadioEnergyModelHelper radioHelper;
+        // radioHelper.Set("TxCurrentA", DoubleValue(0.02));
+        // radioHelper.Set("RxCurrentA", DoubleValue(0.01));
+        // NetDeviceContainer devs = helper.GetDeviceContainer(); // <-- if exposed
+        // radioHelper.Install(devs);
+        // std::cerr << "[INFO] Installed WifiRadioEnergyModel on devices\n";
+    }
+
     // crypto backends / auth managers
     auto crypto_uav = CreateCryptoBackend();
     auto crypto_bs  = CreateCryptoBackend();
     auto auth_uav   = CreateAuthManager(std::move(crypto_uav));
     auto auth_bs    = CreateAuthManager(std::move(crypto_bs));
 
-    // metrics collector
+    // metrics collector: register nodes AFTER energy sources installed
     auto collector = std::make_shared<MetricsCollector>();
     for (uint32_t i = 0; i < nodeCount; ++i) collector->RegisterNode(i, helper.GetNode(i));
+
+    // Debug: print initial energy per node to confirm non-zero initial energy
+    for (uint32_t i = 0; i < nodeCount; ++i) {
+        Ptr<Node> n = helper.GetNode(i);
+        Ptr<ns3::energy::BasicEnergySource> bes = n->GetObject<ns3::energy::BasicEnergySource>();
+        if (bes) {
+            std::cerr << "[DEBUG] node " << i << " initial energy = " << bes->GetRemainingEnergy() << " J\n";
+        } else {
+            std::cerr << "[DEBUG] node " << i << " has NO BasicEnergySource\n";
+        }
+    }
 
     // Pre-generate BS Ed25519 keypair
     auto tempCrypto = CreateCryptoBackend();

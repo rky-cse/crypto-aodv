@@ -1044,6 +1044,51 @@ CMakeFiles/auth_scenario.dir/simulations/auth_scenario.cc.o: \
  /home/rky_cse/ns-3.46/src/internet/model/udp-socket.h \
  /home/rky_cse/ns-3.46/build/include/ns3/windowed-filter.h \
  /home/rky_cse/ns-3.46/src/internet/model/windowed-filter.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-module.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-harvester-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/basic-energy-harvester-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-container.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-harvester.h \
+ /home/rky_cse/ns-3.46/src/energy/model/energy-harvester.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-source-container.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-source-container.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-source.h \
+ /home/rky_cse/ns-3.46/src/energy/model/energy-source.h \
+ /home/rky_cse/ns-3.46/src/energy/model/device-energy-model-container.h \
+ /home/rky_cse/ns-3.46/src/energy/model/device-energy-model.h \
+ /home/rky_cse/ns-3.46/src/energy/model/energy-harvester.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-source-container.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-source-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/basic-energy-source-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-model-helper.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/device-energy-model-container.h \
+ /home/rky_cse/ns-3.46/src/energy/model/device-energy-model-container.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/device-energy-model.h \
+ /home/rky_cse/ns-3.46/src/energy/model/device-energy-model.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-harvester-container.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-container.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-harvester-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-helper.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/energy-model-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/energy-model-helper.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/generic-battery-model-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/generic-battery-model-helper.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/generic-battery-model.h \
+ /home/rky_cse/ns-3.46/src/energy/model/generic-battery-model.h \
+ /home/rky_cse/ns-3.46/src/energy/model/energy-source.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/li-ion-energy-source-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/li-ion-energy-source-helper.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/rv-battery-model-helper.h \
+ /home/rky_cse/ns-3.46/src/energy/helper/rv-battery-model-helper.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-harvester.h \
+ /home/rky_cse/ns-3.46/src/energy/model/basic-energy-harvester.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-source.h \
+ /home/rky_cse/ns-3.46/src/energy/model/basic-energy-source.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/rv-battery-model.h \
+ /home/rky_cse/ns-3.46/src/energy/model/rv-battery-model.h \
+ /home/rky_cse/ns-3.46/build/include/ns3/simple-device-energy-model.h \
+ /home/rky_cse/ns-3.46/src/energy/model/simple-device-energy-model.h \
  /usr/include/c++/13/chrono /usr/include/c++/13/bits/chrono_io.h \
  /usr/include/c++/13/format /usr/include/c++/13/charconv \
  /usr/include/c++/13/span /usr/include/c++/13/variant \
@@ -1101,8 +1146,6 @@ CMakeFiles/auth_scenario.dir/simulations/auth_scenario.cc.o: \
  /home/rky_cse/ns-3.46/src/wifi/model/wifi-phy-state.h \
  /home/rky_cse/ns-3.46/src/wifi/model/wifi-radio-energy-model.h \
  /home/rky_cse/ns-3.46/src/wifi/model/wifi-phy-listener.h \
- /home/rky_cse/ns-3.46/build/include/ns3/device-energy-model.h \
- /home/rky_cse/ns-3.46/src/energy/model/device-energy-model.h \
  /home/rky_cse/ns-3.46/build/include/ns3/mobility-model.h \
  /home/rky_cse/ns-3.46/src/mobility/model/mobility-model.h \
  /home/rky_cse/ns-3.46/build/include/ns3/mobility-export.h \
@@ -1114,18 +1157,6 @@ CMakeFiles/auth_scenario.dir/simulations/auth_scenario.cc.o: \
  /home/rky_cse/ns-3.46/src/wifi/helper/wifi-mac-helper.h \
  /home/rky_cse/ns-3.46/build/include/ns3/wifi-radio-energy-model-helper.h \
  /home/rky_cse/ns-3.46/src/wifi/helper/wifi-radio-energy-model-helper.h \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-model-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-model-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-source-container.h \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-source.h \
- /home/rky_cse/ns-3.46/src/energy/model/energy-source.h \
- /home/rky_cse/ns-3.46/src/energy/model/device-energy-model-container.h \
- /home/rky_cse/ns-3.46/src/energy/model/device-energy-model.h \
- /home/rky_cse/ns-3.46/src/energy/model/energy-harvester.h \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-source-container.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-source-container.h \
- /home/rky_cse/ns-3.46/build/include/ns3/device-energy-model-container.h \
- /home/rky_cse/ns-3.46/src/energy/model/device-energy-model-container.h \
  /home/rky_cse/ns-3.46/build/include/ns3/wifi-radio-energy-model.h \
  /home/rky_cse/ns-3.46/src/wifi/model/wifi-radio-energy-model.h \
  /home/rky_cse/ns-3.46/build/include/ns3/yans-wifi-helper.h \
@@ -1759,35 +1790,4 @@ CMakeFiles/auth_scenario.dir/simulations/auth_scenario.cc.o: \
  /usr/include/sodium/crypto_stream_salsa208.h \
  /usr/include/sodium/crypto_stream_xchacha20.h \
  /mnt/e/minor-crypto-aodv/crypto-aodv/crypto/sodium_crypto.cpp \
- /mnt/e/minor-crypto-aodv/crypto-aodv/metrics/metrics_collector.cpp \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-module.h \
- /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-harvester-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/basic-energy-harvester-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-container.h \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-harvester.h \
- /home/rky_cse/ns-3.46/src/energy/model/energy-harvester.h \
- /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-source-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/basic-energy-source-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-model-helper.h \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-harvester-container.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-container.h \
- /home/rky_cse/ns-3.46/build/include/ns3/energy-harvester-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/energy-harvester-helper.h \
- /home/rky_cse/ns-3.46/build/include/ns3/generic-battery-model-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/generic-battery-model-helper.h \
- /home/rky_cse/ns-3.46/build/include/ns3/generic-battery-model.h \
- /home/rky_cse/ns-3.46/src/energy/model/generic-battery-model.h \
- /home/rky_cse/ns-3.46/src/energy/model/energy-source.h \
- /home/rky_cse/ns-3.46/build/include/ns3/li-ion-energy-source-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/li-ion-energy-source-helper.h \
- /home/rky_cse/ns-3.46/build/include/ns3/rv-battery-model-helper.h \
- /home/rky_cse/ns-3.46/src/energy/helper/rv-battery-model-helper.h \
- /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-harvester.h \
- /home/rky_cse/ns-3.46/src/energy/model/basic-energy-harvester.h \
- /home/rky_cse/ns-3.46/build/include/ns3/basic-energy-source.h \
- /home/rky_cse/ns-3.46/src/energy/model/basic-energy-source.h \
- /home/rky_cse/ns-3.46/build/include/ns3/rv-battery-model.h \
- /home/rky_cse/ns-3.46/src/energy/model/rv-battery-model.h \
- /home/rky_cse/ns-3.46/build/include/ns3/simple-device-energy-model.h \
- /home/rky_cse/ns-3.46/src/energy/model/simple-device-energy-model.h
+ /mnt/e/minor-crypto-aodv/crypto-aodv/metrics/metrics_collector.cpp
