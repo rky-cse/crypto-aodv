@@ -6,6 +6,8 @@
 // Fixed: removed nested-lock deadlock (CaptureFinalEnergyStates no longer locks).
 // Added missing includes and simplified debug output.
 // Updated: added explicit energy source registration to reliably capture energy.
+// Updated: only count delay samples when a meaningful send timestamp is available
+// (avoid diluting averages with control packets that don't carry sender timestamps).
 
 #include <ns3/core-module.h>
 #include <ns3/network-module.h>
@@ -35,8 +37,8 @@ struct NodeMetrics {
     uint64_t packets_received = 0;
     uint64_t bytes_sent = 0;
     uint64_t bytes_received = 0;
-    double sum_delay_s = 0.0;
-    uint64_t delay_count = 0;
+    double sum_delay_s = 0.0;   // sum of measured delays (only when known)
+    uint64_t delay_count = 0;   // number of measured delay samples
     uint64_t crypto_us = 0;
     double initial_energy_j = 0.0;
     double final_energy_j = 0.0;
@@ -45,11 +47,14 @@ struct NodeMetrics {
         ++packets_sent;
         bytes_sent += bytes;
     }
+    // Add a receive event. If delay_s > 0, it contributes to delay statistics.
     void AddRecv(uint64_t bytes, double delay_s) {
         ++packets_received;
         bytes_received += bytes;
-        sum_delay_s += delay_s;
-        ++delay_count;
+        if (delay_s > 0.0) {
+            sum_delay_s += delay_s;
+            ++delay_count;
+        }
     }
     void AddCryptoTimeUs(uint64_t us) {
         crypto_us += us;
@@ -95,6 +100,8 @@ public:
         last_activity_time_ = Simulator::Now();
     }
 
+    // sendTimeSeconds should be the sender's Simulator::Now().GetSeconds() if available,
+    // otherwise pass 0.0 to indicate "unknown send time".
     void OnPacketReceived(uint32_t nodeIndex, uint64_t bytes, double sendTimeSeconds) {
         std::lock_guard<std::mutex> lk(mu_);
         double now_s = Simulator::Now().GetSeconds();
@@ -103,6 +110,7 @@ public:
             delay_s = now_s - sendTimeSeconds;
             if (delay_s < 0.0) delay_s = 0.0;
         }
+        // AddRecv will only include this packet in delay statistics when delay_s > 0.0
         nodes_[nodeIndex].AddRecv(bytes, delay_s);
         if (first_send_time_.IsZero()) first_send_time_ = Simulator::Now();
         last_activity_time_ = Simulator::Now();
@@ -152,7 +160,7 @@ public:
            << std::setw(14) << "PktsRecv"
            << std::setw(14) << "BytesSent"
            << std::setw(14) << "BytesRecv"
-           << std::setw(12) << "AvgDelay(s)"
+           << std::setw(14) << "AvgDelay(s)"
            << std::setw(14) << "Crypto(ms)"
            << std::setw(14) << "InitE(J)"
            << std::setw(14) << "FinalE(J)"
@@ -166,7 +174,7 @@ public:
                << std::setw(14) << m.packets_received
                << std::setw(14) << m.bytes_sent
                << std::setw(14) << m.bytes_received
-               << std::setw(12) << std::fixed << std::setprecision(4) << m.AvgDelay()
+               << std::setw(14) << std::fixed << std::setprecision(6) << m.AvgDelay()
                << std::setw(14) << (m.crypto_us / 1000.0)
                << std::setw(14) << m.initial_energy_j
                << std::setw(14) << m.final_energy_j
@@ -193,7 +201,7 @@ public:
         os << "Total packets recv: " << total_recv << "\n";
         os << "Packet Delivery Ratio (PDR): " << std::fixed << std::setprecision(4) << pdr << "\n";
         os << "Throughput (recv, bits/s): " << std::fixed << std::setprecision(2) << throughput_bps << "\n";
-        os << "Avg end-to-end delay (s): " << overall_avg_delay << "\n";
+        os << "Avg end-to-end delay (s): " << std::fixed << std::setprecision(6) << overall_avg_delay << "\n";
         os << "Total crypto CPU time (ms): " << (total_crypto_us / 1000.0) << "\n";
         os << "Total initial energy (J): " << total_initial_energy << "\n";
         os << "Total final energy (J): " << total_final_energy << "\n";
