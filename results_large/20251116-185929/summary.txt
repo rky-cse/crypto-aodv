@@ -1,0 +1,43 @@
+
+=== Metrics Summary ===
+Simulation time: 1000 s
+Node    PktsSent    PktsRecv      BytesSent     BytesRecv     AvgDelay(s)   Crypto(ms)    InitE(J)      FinalE(J)     
+9       4           2             388           336           0.503720      0.474000      500.000000    490.716435    
+8       0           0             0             0             0.000000      0.000000      500.000000    490.712729    
+7       0           0             0             0             0.000000      0.000000      500.000000    490.713891    
+6       0           0             0             0             0.000000      0.000000      500.000000    490.716278    
+5       0           0             0             0             0.000000      0.000000      500.000000    490.714308    
+4       0           0             0             0             0.000000      0.000000      500.000000    490.716559    
+3       0           0             0             0             0.000000      0.000000      500.000000    490.714947    
+2       0           0             0             0             0.000000      0.000000      500.000000    490.716627    
+1       1           514           168           28246         0.000073      1.380000      500.000000    490.720509    
+0       513         2             28220         194           0.002727      3.999000      500.000000    490.722991    
+
+--- Global ---
+Total packets sent: 518
+Total packets recv: 518
+Packet Delivery Ratio (PDR): 1.0000
+Throughput (recv, bits/s): 230.21
+Avg end-to-end delay (s): 0.002028
+Total crypto CPU time (ms): 5.853000
+Total initial energy (J): 5000.000000
+Total final energy (J): 4907.165274
+Total energy consumed (J): 92.834726
+
+--- Crypto Ops (per-node) ---
+Node 9:
+  AEAD_ENCRYPT_GROUP_A -> count=1 total_ms=0.004000
+  AEAD_ENCRYPT_GROUP_B -> count=1 total_ms=0.005000
+  AUTH_VERIFY -> count=2 total_ms=0.465000
+Node 1:
+  AEAD_DECRYPT_DATA -> count=512 total_ms=1.027000
+  AEAD_DECRYPT_GROUP -> count=1 total_ms=0.001000
+  AUTH_ACK_VERIFY -> count=1 total_ms=0.199000
+  AUTH_GEN -> count=1 total_ms=0.153000
+Node 0:
+  AEAD_DECRYPT_GROUP -> count=1 total_ms=0.002000
+  AEAD_ENCRYPT_DATA -> count=512 total_ms=3.574000
+  AUTH_ACK_VERIFY -> count=1 total_ms=0.232000
+  AUTH_GEN -> count=1 total_ms=0.191000
+======================
+

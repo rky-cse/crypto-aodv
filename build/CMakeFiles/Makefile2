@@ -196,9 +196,9 @@ CMakeFiles/uav_data_scenario.dir/clean:
 # Target rules for target CMakeFiles/crypto_test.dir
 
 # All Build rule for target.
+CMakeFiles/crypto_test.dir/all: _deps/catch2-build/src/CMakeFiles/Catch2.dir/all
 CMakeFiles/crypto_test.dir/all: CMakeFiles/uav_core.dir/all
 CMakeFiles/crypto_test.dir/all: _deps/catch2-build/src/CMakeFiles/Catch2WithMain.dir/all
-CMakeFiles/crypto_test.dir/all: _deps/catch2-build/src/CMakeFiles/Catch2.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/crypto_test.dir/build.make CMakeFiles/crypto_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/crypto_test.dir/build.make CMakeFiles/crypto_test.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/e/minor-crypto-aodv/crypto-aodv/build/CMakeFiles --progress-num=92,93 "Built target crypto_test"

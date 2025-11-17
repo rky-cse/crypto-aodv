@@ -1,0 +1,36 @@
+
+=== Metrics Summary ===
+Simulation time: 60 s
+Node    PktsSent    PktsRecv      BytesSent     BytesRecv     AvgDelay(s)   Crypto(ms)    InitE(J)      FinalE(J)     
+2       4           2             388           336           0.003688      0.402000      500.000000    499.096296    
+1       1           5             168           353           0.002813      0.319000      500.000000    499.096282    
+0       4           2             327           194           0.003251      0.388000      500.000000    499.096286    
+
+--- Global ---
+Total packets sent: 9
+Total packets recv: 9
+Packet Delivery Ratio (PDR): 1.0000
+Throughput (recv, bits/s): 117.73
+Avg end-to-end delay (s): 0.003105
+Total crypto CPU time (ms): 1.109000
+Total initial energy (J): 1500.000000
+Total final energy (J): 1497.288863
+Total energy consumed (J): 2.711137
+
+--- Crypto Ops (per-node) ---
+Node 2:
+  AEAD_ENCRYPT_GROUP_A -> count=1 total_ms=0.004000
+  AEAD_ENCRYPT_GROUP_B -> count=1 total_ms=0.002000
+  AUTH_VERIFY -> count=2 total_ms=0.396000
+Node 1:
+  AEAD_DECRYPT_DATA -> count=3 total_ms=0.006000
+  AEAD_DECRYPT_GROUP -> count=1 total_ms=0.001000
+  AUTH_ACK_VERIFY -> count=1 total_ms=0.171000
+  AUTH_GEN -> count=1 total_ms=0.141000
+Node 0:
+  AEAD_DECRYPT_GROUP -> count=1 total_ms=0.001000
+  AEAD_ENCRYPT_DATA -> count=3 total_ms=0.015000
+  AUTH_ACK_VERIFY -> count=1 total_ms=0.192000
+  AUTH_GEN -> count=1 total_ms=0.180000
+======================
+
